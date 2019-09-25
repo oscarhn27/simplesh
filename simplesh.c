@@ -401,8 +401,8 @@ void run_cd(struct cmd* cmd)
         }
     }
     // cd -
-    else if(ecmd->argv[1]=='-'){
-        char aux[PATH_MAX] = getenv("OLDPWD");
+    else if(strcmp(ecmd->argv[1],"-")==0){
+        char * aux = getenv("OLDPWD");
         if(aux == NULL){
             perror("run_cd: Variable OLDPWD no definida");
             exit(EXIT_FAILURE);
