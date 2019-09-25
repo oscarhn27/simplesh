@@ -408,7 +408,7 @@ void run_cd(struct cmd* cmd)
             exit(EXIT_FAILURE);
         }
         setenv("OLDPWD",path,1);
-        if(chdir(getenv(aux))){
+        if(chdir(aux)){
             perror("chdir");
             exit(EXIT_FAILURE);
         }
