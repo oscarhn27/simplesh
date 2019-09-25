@@ -375,13 +375,54 @@ void run_exit(struct cmd* cmd)
     free_cmd(cmd);
     free(cmd);
 
-    int status = 0; //TODO ¿Que valor deberiamos darle a 'status'?
-    exit(status);
+    exit(EXIT_SUCCESS);
 }
 
-void run_cd()
+// Ejecuta comando interno cd. Este tiene 3 opciones.
+// sin argumentos, cambia el directorio de trabajo a HOME, con un argumento dir
+// cambia el directorio de trabajo a dir, con el argumento '-' cambia al último 
+// directorio de trabajo utilizado.
+
+void run_cd(struct cmd* cmd)
 {
-    printf("Se ejecuta 'cd'\n");
+    struct execcmd* ecmd = (struct execcmd*) cmd;
+    // Guarda el PATH actual
+    char path[PATH_MAX];
+    if(!getcwd(path, PATH_MAX)){
+        perror("getcwd");
+        exit(EXIT_FAILURE);
+    }
+    // cd
+    if(ecmd->argc == 1){
+        setenv("OLDPWD",path,1);
+        if(chdir(getenv("HOME"))){
+            perror("chdir");
+            exit(EXIT_FAILURE);
+        }
+    }
+    // cd -
+    else if(ecmd->argv[1]=='-'){
+        char aux[PATH_MAX] = getenv("OLDPWD");
+        if(aux == NULL){
+            perror("run_cd: Variable OLDPWD no definida");
+            exit(EXIT_FAILURE);
+        }
+        setenv("OLDPWD",path,1);
+        if(chdir(getenv(aux))){
+            perror("chdir");
+            exit(EXIT_FAILURE);
+        }
+    }
+    // cd dir
+    else{
+        setenv("OLDPWD",path,1);
+        if(chdir(ecmd->argv[1])){
+            perror("chdir");
+            exit(EXIT_FAILURE);
+        }
+        
+    }
+
 }
 
 // Devuelve el indice del comando o -1 en caso de no ser interno
@@ -410,7 +451,7 @@ void ejecutar_interno(struct cmd* cmd, int numeroComando) {
             break;
 
         case 2:
-            run_cd();
+            run_cd(cmd);
             break;
     }
 }
@@ -1171,7 +1212,8 @@ char* get_cmd()
         exit(EXIT_FAILURE);
     }
     char* user = passwd->pw_name;
-
+// TODO preguntar al profesor si podemos inicializar la variable
+// al comienzo del programa y cambiarlo solo en cd.
     char path[PATH_MAX];
     if(!getcwd(path, PATH_MAX)){
         perror("getcwd");
@@ -1243,6 +1285,9 @@ int main(int argc, char** argv)
     parse_args(argc, argv);
 
     DPRINTF(DBG_TRACE, "STR\n");
+
+    // Borramos la variable de entorno OLDPWD.
+    unsetenv("OLDPWD");
 
     // Bucle de lectura y ejecución de órdenes
     while ((buf = get_cmd()) != NULL)
