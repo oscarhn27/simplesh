@@ -1,0 +1,124 @@
+{
+    "setup": {
+        "desc": "B2r1",
+        "shell": "simplesh",
+        "prompt": "alumno@.*> ",
+        "timeout": 3,
+        "cmds": [
+            "touch f1",
+            "touch f2",
+            "mkdir dir",
+            "mkdir olddir"
+        ]
+    },
+    "tests": [
+        {
+            "cmd": "\n",
+            "out": "^$"
+        },
+        {
+            "cmd": "echo -n l1 > f3 ; echo l2 >> f3 ; echo -n l3 ; cat f3 | grep l1",
+            "out": "^l3l1l2\\r\\n$"
+        },
+        {
+            "cmd": "echo -n l1 > f4 ; echo l2 >> f4 ; echo -n l3 > f4 ; cat f4 | grep l3",
+            "out": "^l3\\r\\n$"
+        },
+        {
+            "cmd": "(echo -n l1 ; echo l2 ; echo -n l3) | grep l | wc -c",
+            "out": "^8\\r\\n$"
+        },
+        {
+            "cmd": "( cd /etc ; cat lsb-release | grep DESCRIPTION | cut -d = -f 2 ) > dist ; cat dist",
+            "out": "^\"Ubuntu 18.* LTS\"\\r\\n$"
+        },
+
+
+        {
+            "cmd": "cwd",
+            "out": "^cwd: /tmp/tmp.*$"
+        },
+        {
+            "cmd": "cwd | tr / : | cut -d : -f 3",
+            "out": "^tmp.*$"
+        },
+        {
+            "cmd": "cwd > cwdfile ; cat cwdfile",
+            "out": "^cwd: /tmp/tmp.*$"
+        },
+        {
+            "cmd": "(cwd)",
+            "out": "^cwd: /tmp/tmp.*$"
+        },
+        {
+            "cmd": "cd dir >> emptyfile ; cwd ; cat ../emptyfile",
+            "out": "^cwd: /tmp/tmp.*/dir\\r\\n$"
+        },
+
+
+        {
+            "cmd": "exit",
+            "out": "^$"
+        },
+        {
+            "cmd": "echo 1 ; exit ; echo 2",
+            "out": "^1\\r\\n$"
+        },
+        {
+            "cmd": "exit | cwd",
+            "out": "^cwd: /tmp/tmp.*$"
+        },
+        {
+            "cmd": "exit & ; cwd",
+            "out": "^(\\[[0-9]{1,5}\\]\\r\\n){0,1}cwd: /tmp/tmp.*(\\[[0-9]{1,5}\\]\\r\\n){0,1}"
+        },
+        {
+            "cmd": "echo -n 1 ; (exit) ; echo 2",
+            "out": "^12\\r\\n$"
+        },
+
+
+        {
+            "cmd": "cd nodir ; cd dir dir",
+            "out": "^run_cd: No existe el directorio 'nodir'\\r\\nrun_cd: Demasiados argumentos\\r\\n$"
+        },
+        {
+            "cmd": "cd dir ; cwd",
+            "out": "^cwd: /tmp/tmp.*/dir\\r\\n$"
+        },
+        {
+            "cmd": "cd dir | cwd",
+            "out": "^cwd: /tmp/tmp.*$"
+        },
+        {
+            "cmd": "cd dir &",
+            "out": "^(\\[[0-9]{1,5}\\]\\r\\n){0,1}"
+        },
+        {
+            "cmd": "(cd dir) ; cwd",
+            "out": "^cwd: /tmp/tmp.*$"
+        },
+
+
+        {
+            "cmd": "cd ; cwd",
+            "out": "^cwd: /home/alumno\\r\\n$"
+        },
+        {
+            "cmd": "cd -",
+            "out": "^run_cd: Variable OLDPWD no definida\\r\\n$"
+        },
+        {
+            "cmd": "cd dir ; cd ; cd - ; cwd",
+            "out": "^cwd: /tmp/tmp.*/dir\\r\\n$"
+        },
+        {
+            "cmd": "cd olddir; cd ../dir; cd - ; cwd",
+            "out": "^cwd: /tmp/tmp.*/olddir\\r\\n$"
+        },
+        {
+            "cmd": "(cd dir ; cwd ; cd ; cwd ; cd - ; cwd) | grep dir > f2 ; wc -l f2",
+            "out": "^2 f2\\r\\n$"
+        }
+    ]
+}

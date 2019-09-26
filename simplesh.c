@@ -360,7 +360,9 @@ void run_cwd()
     printf("cwd: %s\n", path);
 }
 
-void run_exit(struct cmd* cmd)
+struct cmd* cmd;
+
+void run_exit()
 {   
     //TODO liberacion de memoria
 
@@ -401,7 +403,7 @@ void run_cd(struct cmd* cmd)
         }
     }
     // cd -
-    else if(strcmp(ecmd->argv[1],"-")==0){
+    else if(strcmp(ecmd->argv[1],"-") == 0){
         char * aux = getenv("OLDPWD");
         if(aux == NULL){
             perror("run_cd: Variable OLDPWD no definida");
@@ -447,7 +449,7 @@ void ejecutar_interno(struct cmd* cmd, int numeroComando) {
             break;
 
         case 1:
-            run_exit(cmd);
+            run_exit();
             break;
 
         case 2:
@@ -950,6 +952,7 @@ void run_cmd(struct cmd* cmd)
 
         case LIST:
             lcmd = (struct listcmd*) cmd;
+
             run_cmd(lcmd->left);
             run_cmd(lcmd->right);
             break;
@@ -1276,11 +1279,9 @@ void parse_args(int argc, char** argv)
     }
 }
 
-
 int main(int argc, char** argv)
 {
     char* buf;
-    struct cmd* cmd;
 
     parse_args(argc, argv);
 

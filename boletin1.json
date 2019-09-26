@@ -1,0 +1,55 @@
+{
+    "setup": {
+        "desc": "B1r1",
+        "shell": "simplesh",
+        "prompt": "simplesh> ",
+        "timeout": 3,
+        "cmds": [
+            "touch f1",
+            "touch f2",
+            "mkdir dir"
+        ]
+    },
+    "tests": [
+        {
+            "cmd": "ls",
+            "out": "^dir.*f1.*f2\\r\\n$"
+        },
+        {
+            "cmd": "echo 1",
+            "out": "^1\\r\\n$"
+        },
+        {
+            "cmd": "ls | grep f | wc -l",
+            "out": "^2\\r\\n$"
+        },
+        {
+            "cmd": "(echo 1; echo 2; echo 3) | wc -l",
+            "out": "^3\\r\\n$"
+        },
+        {
+            "cmd": "(cat /etc/lsb-release | grep DESC | cut -d = -f 2 )",
+            "out": "^\"Ubuntu 18.* LTS\"\\r\\n$"
+        },
+        {
+            "cmd": "echo -n l1 > f3 ; echo l2 >> f3 ; cat f3 | grep l1",
+            "out": "^l1l2\\r\\n$"
+        },
+        {
+            "cmd": "cwd",
+            "out": "^cwd: /tmp/tmp.*\\r\\n$"
+        },
+        {
+            "cmd": "exit",
+            "out": "^$"
+        },
+        {
+            "cmd": "cd dir",
+            "out": "^$"
+        },
+        {
+            "cmd": "sleep 5",
+            "out": "^$"
+        }
+    ]
+}
