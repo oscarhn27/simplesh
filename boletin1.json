@@ -2,7 +2,7 @@
     "setup": {
         "desc": "B1r1",
         "shell": "simplesh",
-        "prompt": "simplesh> ",
+        "prompt": "oscar@.*> ",
         "timeout": 3,
         "cmds": [
             "touch f1",
@@ -29,7 +29,7 @@
         },
         {
             "cmd": "(cat /etc/lsb-release | grep DESC | cut -d = -f 2 )",
-            "out": "^\"Ubuntu 18.* LTS\"\\r\\n$"
+            "out": "^\"Ubuntu 16.* LTS\"\\r\\n$"
         },
         {
             "cmd": "echo -n l1 > f3 ; echo l2 >> f3 ; cat f3 | grep l1",

@@ -2,7 +2,7 @@
     "setup": {
         "desc": "B2r1",
         "shell": "simplesh",
-        "prompt": "alumno@.*> ",
+        "prompt": "oscar@.*> ",
         "timeout": 3,
         "cmds": [
             "touch f1",
@@ -30,7 +30,7 @@
         },
         {
             "cmd": "( cd /etc ; cat lsb-release | grep DESCRIPTION | cut -d = -f 2 ) > dist ; cat dist",
-            "out": "^\"Ubuntu 18.* LTS\"\\r\\n$"
+            "out": "^\"Ubuntu 16.* LTS\"\\r\\n$"
         },
 
 
