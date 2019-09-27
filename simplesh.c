@@ -912,15 +912,16 @@ void run_cmd(struct cmd* cmd)
     {
         case EXEC:
             ecmd = (struct execcmd*) cmd;
-
-            comando = cmd_esInterno(ecmd->argv[0]);
-            if (comando != -1)
-                ejecutar_interno(cmd, comando);
-            else {
-                if (fork_or_panic("fork EXEC") == 0)
-                    exec_cmd(ecmd);
-                TRY( wait(NULL) );
-            }
+            if (ecmd->argv[0] != NULL) {
+	            comando = cmd_esInterno(ecmd->argv[0]);
+	            if (comando != -1)
+	                ejecutar_interno(cmd, comando);
+	            else {
+	                if (fork_or_panic("fork EXEC") == 0)
+	                    exec_cmd(ecmd);
+	                TRY( wait(NULL) );
+	            }
+	        }
             break;
 
         case REDR:
