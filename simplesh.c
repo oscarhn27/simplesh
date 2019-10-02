@@ -342,11 +342,12 @@ struct cmd* subscmd(struct cmd* subcmd)
 
 void free_cmd(struct cmd* cmd);
 
-const int N_INTERNOS = 3;
+const int N_INTERNOS = 4;
 char* comandosInternos[] = {
                             "cwd",
                             "exit",
-                            "cd"
+                            "cd",
+                            "psplit"
                             };
 
 void run_cwd()
@@ -385,46 +386,55 @@ void run_exit()
 // cambia el directorio de trabajo a dir, con el argumento '-' cambia al último 
 // directorio de trabajo utilizado.
 
-void run_cd(struct cmd* cmd)
+void run_cd(struct execcmd* ecmd)
 {
-    struct execcmd* ecmd = (struct execcmd*) cmd;
     // Guarda el PATH actual
     char path[PATH_MAX];
     if(!getcwd(path, PATH_MAX)){
         perror("getcwd");
         exit(EXIT_FAILURE);
     }
+
+    // cd con mas argumentos de la cuenta
+    if (ecmd->argc > 2) {
+    	fprintf(stderr, "run_cd: Demasiados argumentos\n");
+    } 
     // cd
-    if(ecmd->argc == 1){
+    else if(ecmd->argc == 1){	
         setenv("OLDPWD",path,1);
         if(chdir(getenv("HOME"))){
             perror("chdir");
-            exit(EXIT_FAILURE);
+            //exit(EXIT_FAILURE);
         }
     }
     // cd -
     else if(strcmp(ecmd->argv[1],"-") == 0){
         char * aux = getenv("OLDPWD");
         if(aux == NULL){
-            perror("run_cd: Variable OLDPWD no definida");
-            exit(EXIT_FAILURE);
-        }
-        setenv("OLDPWD",path,1);
-        if(chdir(aux)){
-            perror("chdir");
-            exit(EXIT_FAILURE);
+            fprintf(stderr, "run_cd: Variable OLDPWD no definida\n");
+            //exit(EXIT_FAILURE);
+        } else {
+	        setenv("OLDPWD",path,1);
+	        if(chdir(aux)){
+	            perror("chdir");
+	            //exit(EXIT_FAILURE);
+        	}
         }
     }
     // cd dir
-    else{
+    else {
         setenv("OLDPWD",path,1);
         if(chdir(ecmd->argv[1])){
-            perror("chdir");
-            exit(EXIT_FAILURE);
+            //perror("run_cd");
+            fprintf(stderr, "run_cd: No existe el directorio '%s'\n", ecmd->argv[1]);
+            //exit(EXIT_FAILURE);
         }
-        
     }
+}
 
+void run_psplit()
+{
+	
 }
 
 // Devuelve el indice del comando o -1 en caso de no ser interno
@@ -442,7 +452,7 @@ int cmd_esInterno(char* cmd)
 }
 
 // En funcion del numeroComando proporcionado, ejecuta el metodo correspondiente
-void ejecutar_interno(struct cmd* cmd, int numeroComando) {
+void ejecutar_interno(struct execcmd* ecmd, int numeroComando) {
     switch (numeroComando) {
         case 0:
             run_cwd();
@@ -453,8 +463,12 @@ void ejecutar_interno(struct cmd* cmd, int numeroComando) {
             break;
 
         case 2:
-            run_cd(cmd);
+            run_cd(ecmd);
             break;
+
+        case 3:
+        	run_psplit();
+        	break;
     }
 }
 
@@ -912,42 +926,48 @@ void run_cmd(struct cmd* cmd)
     {
         case EXEC:
             ecmd = (struct execcmd*) cmd;
-
-            comando = cmd_esInterno(ecmd->argv[0]);
-            if (comando != -1)
-                ejecutar_interno(cmd, comando);
-            else {
-                if (fork_or_panic("fork EXEC") == 0)
-                    exec_cmd(ecmd);
-                TRY( wait(NULL) );
-            }
+            if (ecmd->argv[0] != NULL) {
+	            comando = cmd_esInterno(ecmd->argv[0]);
+	            if (comando != -1)
+	                ejecutar_interno(ecmd, comando);
+	            else {
+	                if (fork_or_panic("fork EXEC") == 0)
+	                    exec_cmd(ecmd);
+	                TRY( wait(NULL) );
+	            }
+	        }
             break;
 
         case REDR:
+
             rcmd = (struct redrcmd*) cmd;
-            if (fork_or_panic("fork REDR") == 0)
+
+            int fd_anterior = dup(rcmd->fd);	// Guardamos el anterior descriptor de fichero
+            TRY( close(rcmd->fd) );
+            if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0)
             {
-                TRY( close(rcmd->fd) );
-                if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0)
-                {
                     perror("open");
                     exit(EXIT_FAILURE);
-                }
+            }
 
-                if (rcmd->cmd->type == EXEC){
-                    ecmd = (struct execcmd*) rcmd->cmd;
-
-                    comando = cmd_esInterno(ecmd->argv[0]);
-                    if (comando != -1)
-                        ejecutar_interno(cmd, comando);
-                    else
-                        exec_cmd(ecmd);  
-                }
+            if (rcmd->cmd->type == EXEC && (comando = cmd_esInterno((ecmd = (struct execcmd*) rcmd->cmd)->argv[0])) != -1)
+	            ejecutar_interno(ecmd, comando);
+            else if (fork_or_panic("fork REDR") == 0)
+            {
+                if (rcmd->cmd->type == EXEC)
+                    exec_cmd(ecmd);
                 else
                     run_cmd(rcmd->cmd);
+
                 exit(EXIT_SUCCESS);
             }
-            TRY( wait(NULL) );
+            else 
+            	TRY( wait(NULL) );
+
+            TRY ( close(fd) );
+            fd = dup(fd_anterior);
+   			TRY ( close(fd_anterior) );
+
             break;
 
         case LIST:
@@ -977,7 +997,7 @@ void run_cmd(struct cmd* cmd)
 
                     comando = cmd_esInterno(ecmd->argv[0]);
                     if (comando != -1)
-                        ejecutar_interno(cmd, comando);
+                        ejecutar_interno(ecmd, comando);
                     else
                         exec_cmd(ecmd);
                 }
@@ -998,7 +1018,7 @@ void run_cmd(struct cmd* cmd)
 
                     comando = cmd_esInterno(ecmd->argv[0]);
                     if (comando != -1)
-                        ejecutar_interno(cmd, comando);
+                        ejecutar_interno(ecmd, comando);
                     else
                         exec_cmd(ecmd);
                 }
@@ -1024,7 +1044,7 @@ void run_cmd(struct cmd* cmd)
 
                     comando = cmd_esInterno(ecmd->argv[0]);
                     if (comando != -1)
-                        ejecutar_interno(cmd, comando);
+                        ejecutar_interno(ecmd, comando);
                     else
                         exec_cmd(ecmd);
                 }
