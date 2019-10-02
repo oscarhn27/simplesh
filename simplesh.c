@@ -35,6 +35,7 @@
 #include <pwd.h>
 #include <limits.h>
 #include <libgen.h>
+#include <math.h>
 
 // Biblioteca readline
 #include <readline/readline.h>
@@ -337,7 +338,7 @@ struct cmd* subscmd(struct cmd* subcmd)
 
 
 /******************************************************************************
- * Implementacion de comandos internos (Boletin 2)
+ * Implementacion de comandos internos (Boletin 2/3)
  ******************************************************************************/
 
 void free_cmd(struct cmd* cmd);
@@ -404,7 +405,6 @@ void run_cd(struct execcmd* ecmd)
         setenv("OLDPWD",path,1);
         if(chdir(getenv("HOME"))){
             perror("chdir");
-            //exit(EXIT_FAILURE);
         }
     }
     // cd -
@@ -412,29 +412,105 @@ void run_cd(struct execcmd* ecmd)
         char * aux = getenv("OLDPWD");
         if(aux == NULL){
             fprintf(stderr, "run_cd: Variable OLDPWD no definida\n");
-            //exit(EXIT_FAILURE);
         } else {
 	        setenv("OLDPWD",path,1);
 	        if(chdir(aux)){
 	            perror("chdir");
-	            //exit(EXIT_FAILURE);
         	}
         }
     }
     // cd dir
     else {
         setenv("OLDPWD",path,1);
-        if(chdir(ecmd->argv[1])){
-            //perror("run_cd");
+        if(chdir(ecmd->argv[1]))
             fprintf(stderr, "run_cd: No existe el directorio '%s'\n", ecmd->argv[1]);
-            //exit(EXIT_FAILURE);
-        }
     }
 }
 
-void run_psplit()
+char * help_psplit(){
+    return "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n\tOpciones:\n\t-l NLINES\tNúmero máximo de líneas por fichero.\n\t-b NBYTES\tNúmero máximo de bytes por fichero.\n\t-s BSIZE\tTamaño en bytes de los bloques leídos de [FILEn] o stdin.\n\t-p PROCS\tNúmero máximo de procesos simultáneos.\n\t-h\t\tAyuda";
+}
+
+void run_psplit(struct execcmd* ecmd)
 {
-	
+    char errPsplit[] = {'s','p','l','b'};
+	int opt, l, b, s, p, error, flag_b, flag_l;
+    l = b = error = flag_l = flag_b = 0;
+    s = 1024;
+    p = 1;
+    optind = 1;
+    // TODO : ANALIZAR TODOS LOS ERRORES.
+    while (!error && (opt = getopt(ecmd->argc, ecmd->argv, "l:b:s:p:h")) != -1) {
+        switch (opt) {
+            case 'l':
+                if(flag_b)  error=1;
+                else{
+                    l = atoi(optarg);
+                    if(l <= 0) error=4;
+                    else{
+                        printf("Se lee 'l' con la opcion %d\n", l);
+                        flag_l = 1;
+                    }
+                }
+                break;
+            case 'b':
+                if(flag_l)  error=1;
+                else{
+                    b = atoi(optarg);
+                    if(b <= 0) error=5;
+                    else{
+                        printf("Se lee 'b' con la opcion %d\n", b);
+                        flag_b = 1;
+                    }
+                }
+                break;
+            case 's':
+                s = atoi(optarg);
+                if(s <= 0 || s > (int)pow(2, 20)) error=2;
+                else{
+                    printf("Se lee 's' con la opcion %d\n", s);
+                }
+                break;
+            case 'p':
+                p = atoi(optarg);
+                if(p <= 0) error=3;
+                else{
+                    printf("Se lee 'p' con la opcion %d\n", p);
+                }
+                break;
+            case 'h':
+                printf("%s\n", help_psplit());
+                break;
+            default:
+                fprintf(stderr, "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n");
+        }
+    }
+    switch(error){
+        case 1:
+            fprintf(stderr, "psplit: Opciones incompatibles\n");
+            break;
+        case 2:
+        case 3:
+        case 4:
+        case 5:
+            fprintf(stderr, "psplit: Opción -%c no válida\n", errPsplit[error-2]);
+            break;
+    }
+    if(!error){
+        if(optind == ecmd->argc){
+
+            int fd = open("stdin", O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
+            char buffer [s+1];
+            int charsLeidos;
+            while((charsLeidos = read(STDIN_FILENO, buffer, s)))
+                // TODO Asegurarse de que se escribe todo.
+                write(fd, buffer, charsLeidos);
+        }
+        else{
+            for(int i = optind; i < ecmd->argc; i++);
+                // TODO Usar función para cada fichero
+        }
+    }
 }
 
 // Devuelve el indice del comando o -1 en caso de no ser interno
@@ -467,7 +543,7 @@ void ejecutar_interno(struct execcmd* ecmd, int numeroComando) {
             break;
 
         case 3:
-        	run_psplit();
+        	run_psplit(ecmd);
         	break;
     }
 }
