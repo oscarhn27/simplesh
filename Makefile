@@ -7,7 +7,7 @@ LDLIBS=-lreadline
 
 OBJECTS=$(patsubst %.c,%.o,$(wildcard *.c))
 
-$(TARGET): $(OBJECTS)
+$(TARGET): $(OBJECTS) -lm
 
 clean:
 	rm -rf *~ $(OBJECTS) $(TARGET) core

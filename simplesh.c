@@ -20,6 +20,7 @@
 #define _POSIX_C_SOURCE 200809L /* IEEE 1003.1-2008 (véase /usr/include/features.h) */
 //#define NDEBUG                /* Traduce asertos y DMACROS a 'no ops' */
 
+#include <math.h>
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -35,7 +36,6 @@
 #include <pwd.h>
 #include <limits.h>
 #include <libgen.h>
-#include <math.h>
 
 // Biblioteca readline
 #include <readline/readline.h>
@@ -89,6 +89,8 @@ static int g_dbg_level = 0;
 // Número máximo de argumentos de un comando
 #define MAX_ARGS 16
 
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 // Delimitadores
 static const char WHITESPACE[] = " \t\r\n\v";
@@ -431,9 +433,71 @@ char * help_psplit(){
     return "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n\tOpciones:\n\t-l NLINES\tNúmero máximo de líneas por fichero.\n\t-b NBYTES\tNúmero máximo de bytes por fichero.\n\t-s BSIZE\tTamaño en bytes de los bloques leídos de [FILEn] o stdin.\n\t-p PROCS\tNúmero máximo de procesos simultáneos.\n\t-h\t\tAyuda";
 }
 
+char* itoa(int val, int base){
+    static char buf[32] = {0};
+    int i = 30;
+    for(; val && i ; --i, val /= base)
+        buf[i] = "0123456789abcdef"[val % base];
+    return &buf[i+1];
+    
+}
+
+void nombreFichero(char * nombre, int indice, char * dst){
+    //[(int)strlen(nombre)+(int)ceil(log10(indice))+1];
+    strcpy(dst, nombre);
+    if(indice == 0){
+        dst[strlen(nombre)] = '0';
+        dst[strlen(nombre)+1] = 0;
+    }
+    strcat(dst, itoa(indice, 10));
+}
+
+void do_psplit(int l, int b, int s, int fd, char * name){
+    char buffer [s+1];
+    char nombre_fich [100];
+    int charsLeidos, offset, offset_W;
+    int indice = 0;
+    int b_escribir = b;
+    nombreFichero(name, indice, nombre_fich);
+    printf("%s\n", nombre_fich);
+    int fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+    while((charsLeidos = read(fd, buffer, s))){
+        if(b){
+            offset = 0;
+            while (charsLeidos > 0) {
+                if (b_escribir == 0) {
+                    TRY ( close(fd_i) );
+                    indice++;
+                    nombreFichero(name, indice, nombre_fich);
+                    printf("%s\n", nombre_fich);
+                    fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+                    b_escribir = b;
+                }
+                offset_W = 0;
+                while( (offset_W += write(fd_i, buffer+offset+offset_W, MIN(charsLeidos, b_escribir)-offset_W )) != MIN(charsLeidos, b_escribir) )
+                    if(offset_W < 0)
+                    {
+                        perror("write");
+                        exit(EXIT_FAILURE);
+                    }
+
+                offset += offset_W;
+                b_escribir -= offset_W;
+                charsLeidos -= offset_W;
+            }
+        }
+        else{
+
+        }
+    }
+    TRY ( close(fd_i) );
+
+}
+
 void run_psplit(struct execcmd* ecmd)
 {
     char errPsplit[] = {'s','p','l','b'};
+    const int MAX_BUF_SIZE = pow(2, 20);
 	int opt, l, b, s, p, error, flag_b, flag_l;
     l = b = error = flag_l = flag_b = 0;
     s = 1024;
@@ -466,7 +530,7 @@ void run_psplit(struct execcmd* ecmd)
                 break;
             case 's':
                 s = atoi(optarg);
-                if(s <= 0 || s > (int)pow(2, 20)) error=2;
+                if(s <= 0 || s > MAX_BUF_SIZE) error=2;
                 else{
                     printf("Se lee 's' con la opcion %d\n", s);
                 }
@@ -497,18 +561,28 @@ void run_psplit(struct execcmd* ecmd)
             break;
     }
     if(!error){
-        if(optind == ecmd->argc){
 
-            int fd = open("stdin", O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
+        if(optind == ecmd->argc){
+            char * file_in = "stdin";
+/*
+            int fd = open(file_in, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
             char buffer [s+1];
             int charsLeidos;
-            while((charsLeidos = read(STDIN_FILENO, buffer, s)))
-                // TODO Asegurarse de que se escribe todo.
-                write(fd, buffer, charsLeidos);
+            while((charsLeidos = read(STDIN_FILENO, buffer, s))){
+                int offset = 0;
+                while( (offset += write(fd, buffer+offset, charsLeidos-offset)) != charsLeidos );
+            }
+
+            TRY( close(fd) );*/
+            do_psplit(l, b, s, STDIN_FILENO, file_in);
         }
         else{
-            for(int i = optind; i < ecmd->argc; i++);
-                // TODO Usar función para cada fichero
+            for(int i = optind; i < ecmd->argc; i++){
+                int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
+                do_psplit(l, b, s, fd, ecmd->argv[i]);
+                TRY ( close(fd) );
+            }
+
         }
     }
 }
