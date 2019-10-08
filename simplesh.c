@@ -430,11 +430,16 @@ void run_cd(struct execcmd* ecmd)
 }
 
 char * help_psplit(){
-    return "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n\tOpciones:\n\t-l NLINES\tNúmero máximo de líneas por fichero.\n\t-b NBYTES\tNúmero máximo de bytes por fichero.\n\t-s BSIZE\tTamaño en bytes de los bloques leídos de [FILEn] o stdin.\n\t-p PROCS\tNúmero máximo de procesos simultáneos.\n\t-h\t\tAyuda";
+    return "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n\tOpciones:\n\t-l NLINES Número máximo de líneas por fichero.\n\t-b NBYTES Número máximo de bytes por fichero.\n\t-s BSIZE Tamaño en bytes de los bloques leídos de [FILEn] o stdin.\n\t-p PROCS Número máximo de procesos simultáneos.\n\t-h        Ayuda\n";
 }
 
 char* itoa(int val, int base){
     static char buf[32] = {0};
+    if(val == 0){
+        buf[30] = '0';
+        return &buf[30];
+    }
+
     int i = 30;
     for(; val && i ; --i, val /= base)
         buf[i] = "0123456789abcdef"[val % base];
@@ -443,23 +448,23 @@ char* itoa(int val, int base){
 }
 
 void nombreFichero(char * nombre, int indice, char * dst){
-    //[(int)strlen(nombre)+(int)ceil(log10(indice))+1];
-    strcpy(dst, nombre);
+    strcpy(dst, nombre);/*
     if(indice == 0){
-        dst[strlen(nombre)] = '0';
-        dst[strlen(nombre)+1] = 0;
-    }
+        int len_nm = strlen(nombre);
+        dst[len_nm] = '0';
+        dst[len_nm+1] = 0;
+    }*/
     strcat(dst, itoa(indice, 10));
 }
 
 void do_psplit(int l, int b, int s, int fd, char * name){
     char buffer [s+1];
-    char nombre_fich [100];
-    int charsLeidos, offset, offset_W;
-    int indice = 0;
+    char nombre_fich [NAME_MAX+1]; // + 1 porque no incluye el char \0 en la especificacion.
+    int charsLeidos, offset, offset_W, i, saltos, indice;
+    charsLeidos = offset = offset_W = i = saltos = indice = 0;
     int b_escribir = b;
+
     nombreFichero(name, indice, nombre_fich);
-    printf("%s\n", nombre_fich);
     int fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
     while((charsLeidos = read(fd, buffer, s))){
         if(b){
@@ -469,17 +474,20 @@ void do_psplit(int l, int b, int s, int fd, char * name){
                     TRY ( close(fd_i) );
                     indice++;
                     nombreFichero(name, indice, nombre_fich);
-                    printf("%s\n", nombre_fich);
                     fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
                     b_escribir = b;
                 }
                 offset_W = 0;
-                while( (offset_W += write(fd_i, buffer+offset+offset_W, MIN(charsLeidos, b_escribir)-offset_W )) != MIN(charsLeidos, b_escribir) )
+                // offset se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte.
+                // offset_W se utiliza para el error de write.
+                // El minimo se calcula para que no se intente escribir mas caracteres de la cuenta.
+                while( (offset_W += write(fd_i, buffer+offset+offset_W, MIN(charsLeidos, b_escribir)-offset_W )) != MIN(charsLeidos, b_escribir) ){
                     if(offset_W < 0)
                     {
                         perror("write");
                         exit(EXIT_FAILURE);
                     }
+                }
 
                 offset += offset_W;
                 b_escribir -= offset_W;
@@ -487,7 +495,35 @@ void do_psplit(int l, int b, int s, int fd, char * name){
             }
         }
         else{
+            i = 0;
+            offset = 0;
+            while(i < charsLeidos){
+                do{
+                    if(buffer[i] == '\n')
+                        saltos++; 
+                    i++;
+                }while((i < charsLeidos) && (saltos < l));
+                
+                offset_W = 0;
+                // offset se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte y se resta en i para no escribirlo todo en estos casos.
+                // offset_W se utiliza para el error de write.
+                while( (offset_W += write(fd_i, buffer+offset+offset_W, i-offset-offset_W )) != i-offset ){
+                    if(offset_W < 0)
+                    {
+                        perror("write");
+                        exit(EXIT_FAILURE);
+                    }
+                }
 
+                offset = i;
+                if(saltos == l){
+                    TRY( close(fd_i) );
+                    indice++;
+                    nombreFichero(name, indice, nombre_fich);
+                    fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+                    saltos = 0;
+                }
+            }
         }
     }
     TRY ( close(fd_i) );
@@ -512,7 +548,7 @@ void run_psplit(struct execcmd* ecmd)
                     l = atoi(optarg);
                     if(l <= 0) error=4;
                     else{
-                        printf("Se lee 'l' con la opcion %d\n", l);
+                        // printf("Se lee 'l' con la opcion %d\n", l);
                         flag_l = 1;
                     }
                 }
@@ -523,7 +559,7 @@ void run_psplit(struct execcmd* ecmd)
                     b = atoi(optarg);
                     if(b <= 0) error=5;
                     else{
-                        printf("Se lee 'b' con la opcion %d\n", b);
+                        // printf("Se lee 'b' con la opcion %d\n", b);
                         flag_b = 1;
                     }
                 }
@@ -532,18 +568,19 @@ void run_psplit(struct execcmd* ecmd)
                 s = atoi(optarg);
                 if(s <= 0 || s > MAX_BUF_SIZE) error=2;
                 else{
-                    printf("Se lee 's' con la opcion %d\n", s);
+                    // printf("Se lee 's' con la opcion %d\n", s);
                 }
                 break;
             case 'p':
                 p = atoi(optarg);
                 if(p <= 0) error=3;
                 else{
-                    printf("Se lee 'p' con la opcion %d\n", p);
+                    // printf("Se lee 'p' con la opcion %d\n", p);
                 }
                 break;
             case 'h':
                 printf("%s\n", help_psplit());
+                return;
                 break;
             default:
                 fprintf(stderr, "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n");
