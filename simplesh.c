@@ -367,17 +367,7 @@ void run_cwd()
 struct cmd* cmd;
 
 void run_exit()
-{   
-    //TODO liberacion de memoria
-
-    /*
-     * echo 1 ; exit ; echo 2 ; echo 3
-     * Se ve como una 'LIST', y se guarda de la siguiente forma:
-     * cmd-> [echo1] [{exit}{(echo2)(echo3)}]
-     * la parte izquierda ya esta ejecutada y liberada, tenemos que liberar la memoria
-     * de la parte derecha tras el exit, inclusive
-    */
-
+{
     free_cmd(cmd);
     free(cmd);
 
@@ -448,12 +438,7 @@ char* itoa(int val, int base){
 }
 
 void nombreFichero(char * nombre, int indice, char * dst){
-    strcpy(dst, nombre);/*
-    if(indice == 0){
-        int len_nm = strlen(nombre);
-        dst[len_nm] = '0';
-        dst[len_nm+1] = 0;
-    }*/
+    strcpy(dst, nombre);
     strcat(dst, itoa(indice, 10));
 }
 
@@ -498,12 +483,21 @@ void do_psplit(int l, int b, int s, int fd, char * name){
             i = 0;
             offset = 0;
             while(i < charsLeidos){
+                
+                if(saltos == l){
+                    TRY( close(fd_i) );
+                    indice++;
+                    nombreFichero(name, indice, nombre_fich);
+                    fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+                    saltos = 0;
+                }
+                
                 do{
                     if(buffer[i] == '\n')
                         saltos++; 
                     i++;
                 }while((i < charsLeidos) && (saltos < l));
-                
+
                 offset_W = 0;
                 // offset se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte y se resta en i para no escribirlo todo en estos casos.
                 // offset_W se utiliza para el error de write.
@@ -514,15 +508,7 @@ void do_psplit(int l, int b, int s, int fd, char * name){
                         exit(EXIT_FAILURE);
                     }
                 }
-
                 offset = i;
-                if(saltos == l){
-                    TRY( close(fd_i) );
-                    indice++;
-                    nombreFichero(name, indice, nombre_fich);
-                    fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
-                    saltos = 0;
-                }
             }
         }
     }
@@ -539,7 +525,6 @@ void run_psplit(struct execcmd* ecmd)
     s = 1024;
     p = 1;
     optind = 1;
-    // TODO : ANALIZAR TODOS LOS ERRORES.
     while (!error && (opt = getopt(ecmd->argc, ecmd->argv, "l:b:s:p:h")) != -1) {
         switch (opt) {
             case 'l':
@@ -548,7 +533,6 @@ void run_psplit(struct execcmd* ecmd)
                     l = atoi(optarg);
                     if(l <= 0) error=4;
                     else{
-                        // printf("Se lee 'l' con la opcion %d\n", l);
                         flag_l = 1;
                     }
                 }
@@ -559,7 +543,6 @@ void run_psplit(struct execcmd* ecmd)
                     b = atoi(optarg);
                     if(b <= 0) error=5;
                     else{
-                        // printf("Se lee 'b' con la opcion %d\n", b);
                         flag_b = 1;
                     }
                 }
@@ -601,16 +584,6 @@ void run_psplit(struct execcmd* ecmd)
 
         if(optind == ecmd->argc){
             char * file_in = "stdin";
-/*
-            int fd = open(file_in, O_WRONLY | O_CREAT | O_TRUNC, S_IRWXU);
-            char buffer [s+1];
-            int charsLeidos;
-            while((charsLeidos = read(STDIN_FILENO, buffer, s))){
-                int offset = 0;
-                while( (offset += write(fd, buffer+offset, charsLeidos-offset)) != charsLeidos );
-            }
-
-            TRY( close(fd) );*/
             do_psplit(l, b, s, STDIN_FILENO, file_in);
         }
         else{
