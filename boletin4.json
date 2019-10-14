@@ -1,0 +1,97 @@
+{
+    "setup": {
+        "desc": "B4r1",
+        "shell": "simplesh",
+        "prompt": "josemanuelhr@.*> ",
+        "timeout": 5,
+        "cmds": [
+            "touch f1"
+        ]
+    },
+    "tests": [
+        {
+            "cmd": "sleep 1 & ; ls f1",
+            "out": "^\\[[0-9]*\\][\\r\\n]*f1\\r\\n$"
+        },
+        {
+            "cmd": "sleep 1 & ; ls | grep f1",
+            "out": "^\\[[0-9]{1,5}\\][\\r\\n]*f1\\r\\n$"
+        },
+
+        {
+            "cmd": "echo -n jobs: ; sleep 1 & ; sleep 2 ; echo -n zombies: ; ps aux | grep [d]efun",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){2}zombies:$"
+        },
+        {
+            "cmd": "echo -n jobs: ; sleep 1 & ; sleep 2 ; echo -n zombies: ; ps aux | grep [d]efun | wc -l",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){2}zombies:0\\r\\n$"
+        },
+        {
+            "cmd": "echo -n jobs: ; sleep 5 & ; sleep 5 & ; sleep 5 & ; sleep 1",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){3}$"
+        },
+        {
+            "cmd": "echo -n jobs: ; ( sleep 5 & ; sleep 5 & ; sleep 5 & ) ; sleep 1",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){3}$"
+        },
+        {
+            "cmd": "echo -n jobs: ; ( sleep 1 & ; sleep 1 & ; sleep 1 & ) ; sleep 2",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){3}$"
+        },
+
+        {
+            "cmd": "echo -n jobs: ; sleep 1 & ; sleep 2",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){2}$"
+        },
+        {
+            "cmd": "sleep 1 & ; sleep 2 ; echo -n survivors: ; bjobs",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){2}survivors:$"
+        },
+        {
+            "cmd": "sleep 1 & ; sleep 2 ; echo -n nsurvivors: ; bjobs | wc -l",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){2}nsurvivors:0\\r\\n$"
+        },
+        {
+            "cmd": "sleep 5 & ; sleep 5 & ; sleep 5 & ; sleep 1 ; echo -n njobs: ; bjobs | wc -l",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){3}njobs:3\\r\\n$"
+        },
+        {
+            "cmd": "( sleep 5 & ; sleep 5 & ; sleep 5 & ) ; sleep 1 ; echo -n njobs: ; bjobs | wc -l",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){3}njobs:0\\r\\n$"
+        },
+        {
+            "cmd": "( sleep 1 & ; sleep 1 & ; sleep 1 & ; bjobs ) ; sleep 2 ; echo -n survivors: ; bjobs",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){6}survivors:$"
+        },
+        {
+            "cmd": "sleep 5 & ; sleep 5 & ; bjobs | tr -d '[]' | xargs -- kill -s SIGKILL ; sleep 1 ; echo -n survivors: ; bjobs | wc -l",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){4}survivors:0\\r\\n$"
+        },
+        {
+            "cmd": "sleep 5 & ; sleep 5 & ; bjobs | tr -d '[]' | xargs -- kill -s SIGKILL ; sleep 1 ; echo -n zombies: ; ps aux | grep [d]efun | wc -l",
+            "out": "^(\\[[0-9]{1,5}\\][\\r\\n]*){4}zombies:0\\r\\n"
+        },
+
+
+        {
+            "cmd": "bjobs -n > /dev/null",
+            "out": "^bjobs: invalid option -- 'n'\\r\\n$"
+        },
+        {
+            "cmd": "bjobs -h | head -3 | tail -1",
+            "out": "^.*Mata todos los procesos en segundo plano.\\r\\n$"
+        },
+        {
+            "cmd": "echo -n jobs: ; sleep 5 & ; sleep 5 & ; bjobs -k ; sleep 1 ; echo -n survivors: ; bjobs",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){4}survivors:$"
+        },
+        {
+            "cmd": "echo -n jobs: ; sleep 5 & ; sleep 5 & ; bjobs -k ; sleep 1 ; echo -n zombies: ; ps aux | grep [d]efun | wc -l",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){4}zombies:0\\r\\n$"
+        },
+        {
+            "cmd": "echo -n jobs: ; ( sleep 1 & ; ) ; ps aux | grep [d]efunc ; bjobs ",
+            "out": "^jobs:(\\[[0-9]{1,5}\\][\\r\\n]*){1}\\r\\n$"
+        }
+    ]
+}

@@ -90,8 +90,12 @@ static int g_dbg_level = 0;
 // Número máximo de argumentos de un comando
 #define MAX_ARGS 16
 
+// Funciones maximo y minimo
 #define MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define MAX(x, y) (((x) > (y)) ? (x) : (y))
+
+// Número máximo de procesos en segundo plano
+#define MAX_2PLANO 8
 
 // Delimitadores
 static const char WHITESPACE[] = " \t\r\n\v";
@@ -341,17 +345,18 @@ struct cmd* subscmd(struct cmd* subcmd)
 
 
 /******************************************************************************
- * Implementacion de comandos internos (Boletin 2/3)
+ * Implementacion de comandos internos y manejador (Boletin 2/3/4)
  ******************************************************************************/
 
 void free_cmd(struct cmd* cmd);
 
-const int N_INTERNOS = 4;
+const int N_INTERNOS = 5;
 char* comandosInternos[] = {
                             "cwd",
                             "exit",
                             "cd",
-                            "psplit"
+                            "psplit",
+                            "bjobs"
                             };
 
 void run_cwd()
@@ -598,6 +603,84 @@ void run_psplit(struct execcmd* ecmd)
     }
 }
 
+pid_t PIDS[MAX_2PLANO] = {-1, -1, -1, -1, -1, -1, -1, -1};
+// guardar_pid asume que siempre habrá espacio en PIDS para almacenar 'pid'
+void guardar_pid(pid_t pid)
+{   
+    int i = 0;
+    while(i < MAX_2PLANO && PIDS[i]!= -1)
+        i++;
+    PIDS[i] = pid;
+}
+
+// eliminar_pid asume que el 'pid' especificado como argumento este dentro de PIDS
+void eliminar_pid(pid_t pid)
+{
+    int i = 0;
+    while(i < MAX_2PLANO && PIDS[i]!= pid)
+        i++;
+    PIDS[i] = -1;
+}
+
+void listar_pids()
+{
+    for (int i = 0; i < MAX_2PLANO; ++i)
+        if (PIDS[i] != -1)
+            printf("[%d]\n", PIDS[i]);
+}
+
+void matarTodos_pids()
+{
+    for (int i = 0; i < MAX_2PLANO; ++i)
+        if (PIDS[i] != -1)
+            kill(PIDS[i], SIGKILL);
+}
+
+// Manejador de señal SIGCHLD
+void handle_sigchld(int sig) {
+    int saved_errno = errno;
+    pid_t pid;
+    while ((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){
+        printf("[%d]\n", pid);
+        eliminar_pid(pid);
+    }
+    errno = saved_errno;
+}
+
+char * help_bjobs()
+{
+    return "Uso : bjobs [ - k ] [ - h ]\n\tOpciones :\n\t-k Mata todos los procesos en segundo plano.\n\t-h Ayuda\n";
+}
+
+void run_bjobs(struct execcmd* ecmd)
+{
+    int opt, error, flag_k;
+    opt = error = flag_k = 0;
+
+    optind = 1;
+    while (!error && (opt = getopt(ecmd->argc, ecmd->argv, "kh")) != -1) {
+        switch (opt) {
+            case 'k':
+                flag_k = 1;
+                break;
+            case 'h':
+                printf("%s\n", help_bjobs());
+                return;
+                break;
+            default:
+                error = 1;
+        }
+    }
+
+    if (!error)
+    {
+        if (flag_k) // Se le envia la señal SIGKILL/SIGINT a todos los procesos en segundo plano
+            matarTodos_pids();
+        else
+            listar_pids();
+    }
+}
+
 // Devuelve el indice del comando o -1 en caso de no ser interno
 int cmd_esInterno(char* cmd)
 {
@@ -630,6 +713,9 @@ void ejecutar_interno(struct execcmd* ecmd, int numeroComando) {
         case 3:
         	run_psplit(ecmd);
         	break;
+        case 4:
+            run_bjobs(ecmd);
+            break;
     }
 }
 
@@ -1078,6 +1164,7 @@ void run_cmd(struct cmd* cmd)
     int fd;
 
     int comando;
+    pid_t pid;    //TODO si no se usa en otro sitio a parte de BACK => moverla ahi
 
     DPRINTF(DBG_TRACE, "STR\n");
 
@@ -1092,9 +1179,9 @@ void run_cmd(struct cmd* cmd)
 	            if (comando != -1)
 	                ejecutar_interno(ecmd, comando);
 	            else {
-	                if (fork_or_panic("fork EXEC") == 0)
+	                if ((pid = fork_or_panic("fork EXEC")) == 0)
 	                    exec_cmd(ecmd);
-	                TRY( wait(NULL) );
+	                TRY( waitpid(pid, 0, 0) );
 	            }
 	        }
             break;
@@ -1147,7 +1234,8 @@ void run_cmd(struct cmd* cmd)
             }
 
             // Ejecución del hijo de la izquierda
-            if (fork_or_panic("fork PIPE left") == 0)
+            pid_t pid_izq;
+            if ((pid_izq = fork_or_panic("fork PIPE left")) == 0)
             {
                 TRY( close(STDOUT_FILENO) );
                 TRY( dup(p[1]) );
@@ -1168,7 +1256,8 @@ void run_cmd(struct cmd* cmd)
             }
 
             // Ejecución del hijo de la derecha
-            if (fork_or_panic("fork PIPE right") == 0)
+            pid_t pid_der;
+            if ((pid_der = fork_or_panic("fork PIPE right")) == 0)
             {
                 TRY( close(STDIN_FILENO) );
                 TRY( dup(p[0]) );
@@ -1190,15 +1279,14 @@ void run_cmd(struct cmd* cmd)
             TRY( close(p[0]) );
             TRY( close(p[1]) );
 
-            // Esperar a ambos hijos
-            TRY( wait(NULL) );
-            TRY( wait(NULL) );
+            // Esperar a ambos hijos y en orden
+            TRY( waitpid(pid_izq, 0, 0) );
+            TRY( waitpid(pid_der, 0, 0) );
             break;
 
         case BACK:
-        //TODO Preguntar por que no va bien la ejecucion en segundo plano
             bcmd = (struct backcmd*)cmd;
-            if (fork_or_panic("fork BACK") == 0)
+            if ((pid = fork_or_panic("fork BACK")) == 0)
             {
                 if (bcmd->cmd->type == EXEC){
                     ecmd = (struct execcmd*) bcmd->cmd;
@@ -1212,6 +1300,11 @@ void run_cmd(struct cmd* cmd)
                 else
                     run_cmd(bcmd->cmd);
                 exit(EXIT_SUCCESS);
+            }
+            else
+            {
+                printf("[%d]\n", pid);
+                guardar_pid(pid);
             }
             break;
 
@@ -1462,27 +1555,36 @@ void parse_args(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
-    // TODO :)
-    // Controlador de señales SIGINT (^C) y SIGQUIT (^\)
-    struct sigaction ign_sigquit;
-    memset(&ign_sigquit, 0, sizeof(struct sigaction));
-    ign_sigquit.sa_flags = 
-
-    if(sigaction(SIGQUIT, &ign_sigquit, NULL) == -1){
-        perror("sigaction");
-        exit(EXIT_FAILURE);
-    }
-
-
-
+    // Bloqueamos la señal SIGINT
     sigset_t blocked_signals;
     sigemptyset(&blocked_signals);
     sigaddset(&blocked_signals, SIGINT);
+
     if(sigprocmask(SIG_BLOCK, &blocked_signals, NULL) == -1){
         perror("sigprocmask");
         exit(EXIT_FAILURE);
     }
 
+    // Ignoramos la señal SIGQUIT
+    struct sigaction ign_sigquit;
+    memset(&ign_sigquit, 0, sizeof(struct sigaction));
+    ign_sigquit.sa_handler = SIG_IGN;
+    sigemptyset(&ign_sigquit.sa_mask);
+
+    if (sigaction(SIGQUIT, &ign_sigquit, NULL) == -1) {
+        perror("sigaction (SIGQUIT)");
+        exit(EXIT_FAILURE);
+    }
+
+    // Cosecha de procesos zombies con manejador de SIGCHLD
+    struct sigaction sa;
+    sa.sa_handler = &handle_sigchld;
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
+    if (sigaction(SIGCHLD, &sa, 0) == -1) {
+        perror("sigaction (SIGCHLD)");
+        exit(EXIT_FAILURE);
+    }
 
     char* buf;
 
