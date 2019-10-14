@@ -36,6 +36,7 @@
 #include <pwd.h>
 #include <limits.h>
 #include <libgen.h>
+#include <signal.h>
 
 // Biblioteca readline
 #include <readline/readline.h>
@@ -1461,6 +1462,28 @@ void parse_args(int argc, char** argv)
 
 int main(int argc, char** argv)
 {
+    // TODO :)
+    // Controlador de señales SIGINT (^C) y SIGQUIT (^\)
+    struct sigaction ign_sigquit;
+    memset(&ign_sigquit, 0, sizeof(struct sigaction));
+    ign_sigquit.sa_flags = 
+
+    if(sigaction(SIGQUIT, &ign_sigquit, NULL) == -1){
+        perror("sigaction");
+        exit(EXIT_FAILURE);
+    }
+
+
+
+    sigset_t blocked_signals;
+    sigemptyset(&blocked_signals);
+    sigaddset(&blocked_signals, SIGINT);
+    if(sigprocmask(SIG_BLOCK, &blocked_signals, NULL) == -1){
+        perror("sigprocmask");
+        exit(EXIT_FAILURE);
+    }
+
+
     char* buf;
 
     parse_args(argc, argv);
