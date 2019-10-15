@@ -2,3 +2,4 @@
 - Justificar que guardar_pid() y eliminar_pid() son funciones reentrantes
 - Hacer pruebas de que bjobs -k no de problemas al hacer a continuacion bjobs (salia opcion inválida --'?')
 - Al hacer dos veces psplit -h hay un error de lectura de una zona liberada de memoria
+- Añadir fsync() en la funcion do_psplit()
