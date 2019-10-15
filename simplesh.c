@@ -556,16 +556,10 @@ void run_psplit(struct execcmd* ecmd)
             case 's':
                 s = atoi(optarg);
                 if(s <= 0 || s > MAX_BUF_SIZE) error=2;
-                else{
-                    // printf("Se lee 's' con la opcion %d\n", s);
-                }
                 break;
             case 'p':
                 p = atoi(optarg);
                 if(p <= 0) error=3;
-                else{
-                    // printf("Se lee 'p' con la opcion %d\n", p);
-                }
                 break;
             case 'h':
                 printf("%s\n", help_psplit());
@@ -593,12 +587,36 @@ void run_psplit(struct execcmd* ecmd)
             do_psplit(l, b, s, STDIN_FILENO, file_in);
         }
         else{
+            pid_t procs_psplit[p];
+            int cola, cabeza = 0;
+            int BPROCS = p;
             for(int i = optind; i < ecmd->argc; i++){
-                int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
-                do_psplit(l, b, s, fd, ecmd->argv[i]);
-                TRY ( close(fd) );
+                if(BPROCS > 0){
+                    if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
+                        int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
+                        do_psplit(l, b, s, fd, ecmd->argv[i]);
+                        TRY ( close(fd) );
+                        exit(EXIT_SUCCESS);
+                    }
+                    BPROCS--;
+                    cabeza = (cabeza + 1) % p;
+                }
+                else{
+                    waitpid(procs_psplit[cola], 0, 0);
+                    cola = (cola + 1) % p;
+                    if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
+                        int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
+                        do_psplit(l, b, s, fd, ecmd->argv[i]);
+                        TRY ( close(fd) );
+                        exit(EXIT_SUCCESS);
+                    }
+                    cabeza = (cabeza + 1) % p;
+                }
             }
-
+            for(int i = 0; i < MIN(p, ecmd->argc - optind); i++){
+                waitpid(procs_psplit[cola], 0, 0);
+                cola = (cola + 1) % p;
+            }
         }
     }
 }
@@ -639,10 +657,17 @@ void matarTodos_pids()
 // Manejador de señal SIGCHLD
 void handle_sigchld(int sig) {
     int saved_errno = errno;
-    pid_t pid;
-    while ((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){
-        printf("[%d]\n", pid);
-        eliminar_pid(pid);
+    pid_t pid = 0;
+    for(int i = 0; i < MAX_2PLANO; i++){
+        if (PIDS[i] != -1 && (pid = waitpid(PIDS[i], 0, WNOHANG)) > 0){
+            printf("[%d]\n", pid);
+            eliminar_pid(pid);
+        }
+        if(pid == -1){
+            // printf("%d\n", PIDS[i]);
+            perror("waitpid");
+
+        }
     }
     errno = saved_errno;
 }
@@ -1280,6 +1305,9 @@ void run_cmd(struct cmd* cmd)
             TRY( close(p[1]) );
 
             // Esperar a ambos hijos y en orden
+            /*TRY( wait(NULL) );
+            TRY( wait(NULL) );*/
+
             TRY( waitpid(pid_izq, 0, 0) );
             TRY( waitpid(pid_der, 0, 0) );
             break;
@@ -1310,12 +1338,12 @@ void run_cmd(struct cmd* cmd)
 
         case SUBS:
             scmd = (struct subscmd*) cmd;
-            if (fork_or_panic("fork SUBS") == 0)
+            if ((pid = fork_or_panic("fork SUBS")) == 0)
             {
                 run_cmd(scmd->cmd);
                 exit(EXIT_SUCCESS);
             }
-            TRY( wait(NULL) );
+            TRY( waitpid(pid, 0, 0) );
             break;
 
         case INV:
