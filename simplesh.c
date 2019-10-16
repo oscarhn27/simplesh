@@ -664,8 +664,8 @@ void handle_sigchld(int sig) {
             eliminar_pid(pid);
         }
         if(pid == -1){
-            // printf("%d\n", PIDS[i]);
-            perror("waitpid");
+            //printf("%d\n", PIDS[i]);
+            //perror("waitpid");
 
         }
     }
