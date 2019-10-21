@@ -347,6 +347,9 @@ struct cmd* subscmd(struct cmd* subcmd)
 /******************************************************************************
  * Implementacion de comandos internos y manejador (Boletin 2/3/4)
  ******************************************************************************/
+void block_sigchld();
+void unblock_sigchld();
+
 
 void free_cmd(struct cmd* cmd);
 
@@ -593,6 +596,9 @@ void run_psplit(struct execcmd* ecmd)
             pid_t procs_psplit[p];
             int cola, cabeza = 0;
             int BPROCS = p;
+
+            block_sigchld();
+
             for(int i = optind; i < ecmd->argc; i++){
                 if(BPROCS > 0){
                     if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
@@ -621,6 +627,9 @@ void run_psplit(struct execcmd* ecmd)
                 cola = (cola + 1) % p;
             }
         }
+
+        unblock_sigchld();
+
     }
 }
 
@@ -628,6 +637,7 @@ pid_t PIDS[MAX_2PLANO] = {-1, -1, -1, -1, -1, -1, -1, -1};
 // guardar_pid asume que siempre habrá espacio en PIDS para almacenar 'pid'
 void guardar_pid(pid_t pid)
 {   
+
     int i = 0;
     while(i < MAX_2PLANO && PIDS[i]!= -1)
         i++;
@@ -637,6 +647,7 @@ void guardar_pid(pid_t pid)
 // eliminar_pid asume que el 'pid' especificado como argumento este dentro de PIDS
 void eliminar_pid(pid_t pid)
 {
+
     int i = 0;
     while(i < MAX_2PLANO && PIDS[i]!= pid)
         i++;
@@ -674,6 +685,33 @@ void handle_sigchld(int sig) {
     }
     errno = saved_errno;
 }
+
+void block_sigchld(){
+    // Preparamos la mascara para bloquear la señal sigchld
+    sigset_t blocked_signals_CHLD;
+    sigemptyset(&blocked_signals_CHLD);
+    sigaddset(&blocked_signals_CHLD, SIGCHLD);
+    
+    // Bloqueamos las señales SIGCHLD
+    if(sigprocmask(SIG_BLOCK, &blocked_signals_CHLD, NULL) == -1){
+        perror("sigprocmask (block SIGCHLD)");
+        exit(EXIT_FAILURE);
+    }
+}
+
+void unblock_sigchld(){
+    // Preparamos la mascara para bloquear la señal sigchld
+    sigset_t blocked_signals_CHLD;
+    sigemptyset(&blocked_signals_CHLD);
+    sigaddset(&blocked_signals_CHLD, SIGCHLD);
+    
+    // Bloqueamos las señales SIGCHLD
+    if(sigprocmask(SIG_UNBLOCK, &blocked_signals_CHLD, NULL) == -1){
+        perror("sigprocmask (unblock SIGCHLD)");
+        exit(EXIT_FAILURE);
+    }
+}
+
 
 char * help_bjobs()
 {
@@ -1180,8 +1218,6 @@ void exec_cmd(struct execcmd* ecmd)
     panic("no se encontró el comando '%s'\n", ecmd->argv[0]);
 }
 
-sigset_t blocked_signals_CHLD;
-
 void run_cmd(struct cmd* cmd)
 {
     struct execcmd* ecmd;
@@ -1198,12 +1234,6 @@ void run_cmd(struct cmd* cmd)
 
     DPRINTF(DBG_TRACE, "STR\n");
 
-    // Bloqueamos las señales SIGCHLD
-    if(sigprocmask(SIG_BLOCK, &blocked_signals_CHLD, NULL) == -1){
-        perror("sigprocmask (block SIGCHLD)");
-        exit(EXIT_FAILURE);
-    }
-
     if(cmd == 0) return;
 
     switch(cmd->type)
@@ -1215,9 +1245,11 @@ void run_cmd(struct cmd* cmd)
 	            if (comando != -1)
 	                ejecutar_interno(ecmd, comando);
 	            else {
+                    block_sigchld();
 	                if ((pid = fork_or_panic("fork EXEC")) == 0)
 	                    exec_cmd(ecmd);
 	                TRY( waitpid(pid, 0, 0) );
+                    unblock_sigchld();
 	            }
 	        }
             break;
@@ -1236,17 +1268,21 @@ void run_cmd(struct cmd* cmd)
 
             if (rcmd->cmd->type == EXEC && (comando = cmd_esInterno((ecmd = (struct execcmd*) rcmd->cmd)->argv[0])) != -1)
 	            ejecutar_interno(ecmd, comando);
-            else if (fork_or_panic("fork REDR") == 0)
-            {
-                if (rcmd->cmd->type == EXEC)
-                    exec_cmd(ecmd);
-                else
-                    run_cmd(rcmd->cmd);
-
-                exit(EXIT_SUCCESS);
-            }
             else 
-            	TRY( wait(NULL) );
+            {
+                block_sigchld();
+                if (fork_or_panic("fork REDR") == 0)
+                {
+                    if (rcmd->cmd->type == EXEC)
+                        exec_cmd(ecmd);
+                    else
+                        run_cmd(rcmd->cmd);
+
+                    exit(EXIT_SUCCESS);
+                }
+                TRY( wait(NULL) );
+                unblock_sigchld();
+            }
 
             TRY ( close(fd) );
             fd = dup(fd_anterior);
@@ -1271,6 +1307,7 @@ void run_cmd(struct cmd* cmd)
 
             // Ejecución del hijo de la izquierda
             pid_t pid_izq;
+            block_sigchld();
             if ((pid_izq = fork_or_panic("fork PIPE left")) == 0)
             {
                 TRY( close(STDOUT_FILENO) );
@@ -1315,12 +1352,9 @@ void run_cmd(struct cmd* cmd)
             TRY( close(p[0]) );
             TRY( close(p[1]) );
 
-            // Esperar a ambos hijos y en orden
-            /*TRY( wait(NULL) );
-            TRY( wait(NULL) );*/
-
             TRY( waitpid(pid_izq, 0, 0) );
             TRY( waitpid(pid_der, 0, 0) );
+            unblock_sigchld();
             break;
 
         case BACK:
@@ -1349,12 +1383,14 @@ void run_cmd(struct cmd* cmd)
 
         case SUBS:
             scmd = (struct subscmd*) cmd;
+            block_sigchld();
             if ((pid = fork_or_panic("fork SUBS")) == 0)
             {
                 run_cmd(scmd->cmd);
                 exit(EXIT_SUCCESS);
             }
             TRY( waitpid(pid, 0, 0) );
+            unblock_sigchld();
             break;
 
         case INV:
@@ -1363,12 +1399,12 @@ void run_cmd(struct cmd* cmd)
     }
 
     DPRINTF(DBG_TRACE, "END\n");
-
+/*
     // Desbloqueamos las señales SGCHLD
     if(sigprocmask(SIG_UNBLOCK, &blocked_signals_CHLD, NULL) == -1){
         perror("sigprocmask (unblock SIGCHLD)");
         exit(EXIT_FAILURE);
-    }
+    }*/
 }
 
 
@@ -1621,10 +1657,6 @@ int main(int argc, char** argv)
         exit(EXIT_FAILURE);
     }
 
-    // Preparamos la mascara para bloquear la señal sigchld
-    sigemptyset(&blocked_signals_CHLD);
-    sigaddset(&blocked_signals_CHLD, SIGCHLD);
-
     // Cosecha de procesos zombies con manejador de SIGCHLD
     struct sigaction sa;
     sa.sa_handler = &handle_sigchld;
@@ -1657,17 +1689,6 @@ int main(int argc, char** argv)
             info("%s:%d:%s: print_cmd: ",
                  __FILE__, __LINE__, __func__);
             print_cmd(cmd); printf("\n"); fflush(NULL); } );
-
-        /*// Bloqueamos las señales SIGCHLD
-        if(sigprocmask(SIG_BLOCK, &blocked_signals_CHLD, NULL) == -1){
-            perror("sigprocmask (block SIGCHLD)");
-            exit(EXIT_FAILURE);
-        }
-        // Desbloqueamos las señales SGCHLD
-        if(sigprocmask(SIG_UNBLOCK, &blocked_signals_CHLD, NULL) == -1){
-            perror("sigprocmask (unblock SIGCHLD)");
-            exit(EXIT_FAILURE);
-        }*/
 
         // Ejecuta la línea de órdenes
         run_cmd(cmd);
