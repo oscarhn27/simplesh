@@ -5,10 +5,10 @@
  * Departamento de Ingeniería y Tecnología de Computadores
  * Facultad de Informática de la Universidad de Murcia
  *
- * Alumnos: APELLIDOS, NOMBRE (GX.X)
- *          APELLIDOS, NOMBRE (GX.X)
+ * Alumnos: HIDALGO ROGEL, JOSÉ MANUEL (G2.2)
+ *          HERNÁNDEZ NAVARRO, ÓSCAR (G2.1)
  *
- * Convocatoria: FEBRERO/JUNIO/JULIO
+ * Convocatoria: FEBRERO
  */
 
 
