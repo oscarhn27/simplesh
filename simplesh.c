@@ -32,6 +32,8 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+// Bibliotecas que hemos necesitado añadir para realizar las practicas
+
 #include <sys/types.h>
 #include <pwd.h>
 #include <limits.h>
@@ -347,9 +349,10 @@ struct cmd* subscmd(struct cmd* subcmd)
 /******************************************************************************
  * Implementacion de comandos internos y manejador (Boletin 2/3/4)
  ******************************************************************************/
+
+// Declaracion previa para evitar conflictos
 void block_sigchld();
 void unblock_sigchld();
-
 
 void free_cmd(struct cmd* cmd);
 
@@ -383,10 +386,11 @@ void run_exit()
     exit(EXIT_SUCCESS);
 }
 
-// Ejecuta comando interno cd. Este tiene 3 opciones.
-// sin argumentos, cambia el directorio de trabajo a HOME, con un argumento dir
-// cambia el directorio de trabajo a dir, con el argumento '-' cambia al último 
-// directorio de trabajo utilizado.
+/* Ejecuta comando interno cd. Este tiene 3 opciones.
+* 	sin argumentos, cambia el directorio de trabajo a $HOME
+*	con un argumento 'dir' cambia el directorio de trabajo a 'dir'
+* 	con el argumento '-' cambia al directorio de trabajo anteriormente utilizado
+*/
 
 void run_cd(struct execcmd* ecmd)
 {
@@ -397,7 +401,7 @@ void run_cd(struct execcmd* ecmd)
         exit(EXIT_FAILURE);
     }
 
-    // cd con mas argumentos de la cuenta
+    // Error: cd con mas argumentos de la cuenta
     if (ecmd->argc > 2) {
     	fprintf(stderr, "run_cd: Demasiados argumentos\n");
     } 
@@ -432,6 +436,7 @@ char * help_psplit(){
     return "Uso: psplit [-l NLINES] [-b NBYTES] [-s BSIZE] [-p PROCS] [FILE1] [FILE2]...\n\tOpciones:\n\t-l NLINES Número máximo de líneas por fichero.\n\t-b NBYTES Número máximo de bytes por fichero.\n\t-s BSIZE Tamaño en bytes de los bloques leídos de [FILEn] o stdin.\n\t-p PROCS Número máximo de procesos simultáneos.\n\t-h        Ayuda\n";
 }
 
+// Funcion auxiliar que hemos usado para la implementación del comando psplit
 char* itoa(int val, int base){
     static char buf[32] = {0};
     if(val == 0){
@@ -446,6 +451,7 @@ char* itoa(int val, int base){
     
 }
 
+// Funcion que dado un nombre de fichero 'nombre' y un entero 'indice' los concatena en un string 'dst'
 void nombreFichero(char * nombre, int indice, char * dst){
     strcpy(dst, nombre);
     strcat(dst, itoa(indice, 10));
@@ -453,28 +459,26 @@ void nombreFichero(char * nombre, int indice, char * dst){
 
 void do_psplit(int l, int b, int s, int fd, char * name){
     char buffer [s+1];
-    char nombre_fich [NAME_MAX+1]; // + 1 porque no incluye el char \0 en la especificacion.
+    char nombre_fich [NAME_MAX+1]; // + 1 porque no incluye el char \0 en la especificacion de NAME_MAX.
     int charsLeidos, offset, offset_W, i, saltos, indice;
     charsLeidos = offset = offset_W = i = saltos = indice = 0;
-    int b_escribir = b;
+    int b_escribir = b;	// bytes a escribir en cada iteracion de lectura
 
     nombreFichero(name, indice, nombre_fich);
     int fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
     while((charsLeidos = read(fd, buffer, s))){
         if(b){
-            offset = 0;
+            offset = 0;	// se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte.
             while (charsLeidos > 0) {
-                if (b_escribir == 0) {
+                if (b_escribir == 0) {	// cuando nos quedamos sin bytes a escribir:
                     fsync(fd_i);
-                    TRY ( close(fd_i) );
+                    TRY ( close(fd_i) );	// cerramos fichero actual
                     indice++;
-                    nombreFichero(name, indice, nombre_fich);
+                    nombreFichero(name, indice, nombre_fich);	// abrimos el siguiente fichero a escribir con nombre 'name' y indice +1
                     fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
-                    b_escribir = b;
+                    b_escribir = b;	// volvemos a establecer que hay que escribir un total de 'b' bytes
                 }
-                offset_W = 0;
-                // offset se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte.
-                // offset_W se utiliza para el error de write.
+                offset_W = 0; // offset_W se utiliza para el error de write y para asegurarnos de que se escribe todo lo que deberia con write()
                 // El minimo se calcula para que no se intente escribir mas caracteres de la cuenta.
                 while( (offset_W += write(fd_i, buffer+offset+offset_W, MIN(charsLeidos, b_escribir)-offset_W )) != MIN(charsLeidos, b_escribir) ){
                     if(offset_W < 0)
