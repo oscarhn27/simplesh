@@ -351,12 +351,12 @@ struct cmd* subscmd(struct cmd* subcmd)
  ******************************************************************************/
 
 // Declaracion previa para evitar conflictos
+struct cmd* cmd;
 void block_sigchld();
 void unblock_sigchld();
 
 void free_cmd(struct cmd* cmd);
 
-const int N_INTERNOS = 5;
 char* comandosInternos[] = {
                             "cwd",
                             "exit",
@@ -364,7 +364,10 @@ char* comandosInternos[] = {
                             "psplit",
                             "bjobs"
                             };
+const int N_INTERNOS = 5;
 
+
+// Funcion interna que nos muestra el directorio actual
 void run_cwd()
 {
     char path[PATH_MAX];
@@ -376,7 +379,6 @@ void run_cwd()
     printf("cwd: %s\n", path);
 }
 
-struct cmd* cmd;
 
 void run_exit()
 {
@@ -387,9 +389,9 @@ void run_exit()
 }
 
 /* Ejecuta comando interno cd. Este tiene 3 opciones.
-* 	sin argumentos, cambia el directorio de trabajo a $HOME
-*	con un argumento 'dir' cambia el directorio de trabajo a 'dir'
-* 	con el argumento '-' cambia al directorio de trabajo anteriormente utilizado
+*   - sin argumentos, cambia el directorio de trabajo a $HOME
+*	- con un argumento 'dir' cambia el directorio de trabajo a 'dir'
+* 	- con el argumento '-' cambia al directorio de trabajo anteriormente utilizado
 */
 
 void run_cd(struct execcmd* ecmd)
@@ -437,6 +439,7 @@ char * help_psplit(){
 }
 
 // Funcion auxiliar que hemos usado para la implementación del comando psplit
+// Convierte un entero 'val' en una base 'base' en un char*, válido hasta base 16
 char* itoa(int val, int base){
     static char buf[32] = {0};
     if(val == 0){
@@ -451,36 +454,47 @@ char* itoa(int val, int base){
     
 }
 
-// Funcion que dado un nombre de fichero 'nombre' y un entero 'indice' los concatena en un string 'dst'
+// Funcion que dado un nombre de fichero 'nombre' y un entero 'indice' los concatena en un char* 'dst'
 void nombreFichero(char * nombre, int indice, char * dst){
     strcpy(dst, nombre);
     strcat(dst, itoa(indice, 10));
 }
 
 void do_psplit(int l, int b, int s, int fd, char * name){
-    char buffer [s+1];
+    char buffer [s+1];  // almacenará los datos leidos de fichero
     char nombre_fich [NAME_MAX+1]; // + 1 porque no incluye el char \0 en la especificacion de NAME_MAX.
-    int charsLeidos, offset, offset_W, i, saltos, indice;
-    charsLeidos = offset = offset_W = i = saltos = indice = 0;
-    int b_escribir = b;	// bytes a escribir en cada iteracion de lectura
 
+    int offset, offset_W, indice;
+    /*
+     * 'offset_W' se utiliza para el error de write y para asegurarnos de que se escribe todo lo que deberia con write()
+     * 'offsset' se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte de los bytes leidos
+    */
+    offset = offset_W = indice = 0;
+
+    // Primer fichero que se crea
     nombreFichero(name, indice, nombre_fich);
     int fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
-    while((charsLeidos = read(fd, buffer, s))){
+
+    int b_escribir = b;	// bytes a escribir en cada iteracion de lectura, para la opcion -b
+    int i, saltos;  // variables que se usaran para la opcion -l
+    i = saltos = 0;
+    int bytesLeidos = 0;    // bytes que leemos con read()
+
+    while ((bytesLeidos = read(fd, buffer, s))) {
         if(b){
-            offset = 0;	// se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte.
-            while (charsLeidos > 0) {
-                if (b_escribir == 0) {	// cuando nos quedamos sin bytes a escribir:
+            offset = 0;	
+            while (bytesLeidos > 0) {
+                if (!b_escribir) {
                     fsync(fd_i);
-                    TRY ( close(fd_i) );	// cerramos fichero actual
+                    TRY ( close(fd_i) );
                     indice++;
-                    nombreFichero(name, indice, nombre_fich);	// abrimos el siguiente fichero a escribir con nombre 'name' y indice +1
+                    nombreFichero(name, indice, nombre_fich);
                     fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
                     b_escribir = b;	// volvemos a establecer que hay que escribir un total de 'b' bytes
                 }
-                offset_W = 0; // offset_W se utiliza para el error de write y para asegurarnos de que se escribe todo lo que deberia con write()
-                // El minimo se calcula para que no se intente escribir mas caracteres de la cuenta.
-                while( (offset_W += write(fd_i, buffer+offset+offset_W, MIN(charsLeidos, b_escribir)-offset_W )) != MIN(charsLeidos, b_escribir) ){
+                offset_W = 0;
+                // El minimo se calcula para que no se intenten escribir mas caracteres de la cuenta.
+                while( (offset_W += write(fd_i, buffer+offset+offset_W, MIN(bytesLeidos, b_escribir)-offset_W )) != MIN(bytesLeidos, b_escribir) ){
                     if(offset_W < 0)
                     {
                         perror("write");
@@ -490,14 +504,13 @@ void do_psplit(int l, int b, int s, int fd, char * name){
 
                 offset += offset_W;
                 b_escribir -= offset_W;
-                charsLeidos -= offset_W;
+                bytesLeidos -= offset_W;
             }
         }
         else{
             i = 0;
             offset = 0;
-            while(i < charsLeidos){
-                
+            while(i < bytesLeidos){
                 if(saltos == l){
                     fsync(fd_i);
                     TRY( close(fd_i) );
@@ -511,11 +524,9 @@ void do_psplit(int l, int b, int s, int fd, char * name){
                     if(buffer[i] == '\n')
                         saltos++; 
                     i++;
-                }while((i < charsLeidos) && (saltos < l));
+                }while((i < bytesLeidos) && (saltos < l));
 
                 offset_W = 0;
-                // offset se utiliza para adelantar el buffer en caso de que ya se haya escrito una parte y se resta en i para no escribirlo todo en estos casos.
-                // offset_W se utiliza para el error de write.
                 while( (offset_W += write(fd_i, buffer+offset+offset_W, i-offset-offset_W )) != i-offset ){
                     if(offset_W < 0)
                     {
@@ -529,7 +540,6 @@ void do_psplit(int l, int b, int s, int fd, char * name){
     }
     fsync(fd_i);
     TRY ( close(fd_i) );
-
 }
 
 void run_psplit(struct execcmd* ecmd)
@@ -544,32 +554,30 @@ void run_psplit(struct execcmd* ecmd)
     while (!error && (opt = getopt(ecmd->argc, ecmd->argv, "l:b:s:p:h")) != -1) {
         switch (opt) {
             case 'l':
-                if(flag_b)  error=1;
+                if(flag_b) error = 1;
                 else{
                     l = atoi(optarg);
-                    if(l <= 0) error=4;
-                    else{
+                    if(l <= 0) error = 4;
+                    else
                         flag_l = 1;
-                    }
                 }
                 break;
             case 'b':
-                if(flag_l)  error=1;
+                if(flag_l) error = 1;
                 else{
                     b = atoi(optarg);
-                    if(b <= 0) error=5;
-                    else{
+                    if(b <= 0) error = 5;
+                    else
                         flag_b = 1;
-                    }
                 }
                 break;
             case 's':
                 s = atoi(optarg);
-                if(s <= 0 || s > MAX_BUF_SIZE) error=2;
+                if(s <= 0 || s > MAX_BUF_SIZE) error = 2;
                 break;
             case 'p':
                 p = atoi(optarg);
-                if(p <= 0) error=3;
+                if(p <= 0) error = 3;
                 break;
             case 'h':
                 printf("%s\n", help_psplit());
@@ -592,19 +600,20 @@ void run_psplit(struct execcmd* ecmd)
     }
     if(!error){
 
-        if(optind == ecmd->argc){
+        if(optind == ecmd->argc){   // No mas argumentos que leer => lectura de la entrada estándar
             char * file_in = "stdin";
             do_psplit(l, b, s, STDIN_FILENO, file_in);
         }
-        else{
+        else {  // Procesamiento de los ficheros en paralelo según la opción -p
             pid_t procs_psplit[p];
-            int cola, cabeza = 0;
+            int cola, cabeza;
+            cola = cabeza = 0;
             int BPROCS = p;
 
             block_sigchld();
 
             for(int i = optind; i < ecmd->argc; i++){
-                if(BPROCS > 0){
+                if(BPROCS > 0) {    // Cuando aún tenemos opción de lanzar más en paralelo
                     if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
                         int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
                         do_psplit(l, b, s, fd, ecmd->argv[i]);
@@ -614,7 +623,7 @@ void run_psplit(struct execcmd* ecmd)
                     BPROCS--;
                     cabeza = (cabeza + 1) % p;
                 }
-                else{
+                else {  // Primero debemos esperar que finalice el más antiguo
                     waitpid(procs_psplit[cola], 0, 0);
                     cola = (cola + 1) % p;
                     if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
@@ -626,6 +635,8 @@ void run_psplit(struct execcmd* ecmd)
                     cabeza = (cabeza + 1) % p;
                 }
             }
+
+            // Esperamos en orden a que acaben todos los procesos en paralelo
             for(int i = 0; i < MIN(p, ecmd->argc - optind); i++){
                 waitpid(procs_psplit[cola], 0, 0);
                 cola = (cola + 1) % p;
@@ -637,27 +648,28 @@ void run_psplit(struct execcmd* ecmd)
     }
 }
 
+// 'PIDS' almacenará el PID de los procesos que se estén ejecutando en segundo plano
 pid_t PIDS[MAX_2PLANO] = {-1, -1, -1, -1, -1, -1, -1, -1};
-// guardar_pid asume que siempre habrá espacio en PIDS para almacenar 'pid'
+
+// guardar_pid(pid) asume que siempre habrá espacio en PIDS para almacenar 'pid'
 void guardar_pid(pid_t pid)
 {   
-
     int i = 0;
     while(i < MAX_2PLANO && PIDS[i]!= -1)
         i++;
     PIDS[i] = pid;
 }
 
-// eliminar_pid asume que el 'pid' especificado como argumento este dentro de PIDS
+// eliminar_pid(pid) asume que el 'pid' especificado como argumento esté dentro de PIDS
 void eliminar_pid(pid_t pid)
 {
-
     int i = 0;
     while(i < MAX_2PLANO && PIDS[i]!= pid)
         i++;
     PIDS[i] = -1;
 }
 
+// muestra todos los PIDS que tenemos almacenados en 'PIDS'
 void listar_pids()
 {
     for (int i = 0; i < MAX_2PLANO; ++i)
@@ -665,6 +677,7 @@ void listar_pids()
             printf("[%d]\n", PIDS[i]);
 }
 
+// envia la señal SIGKILL a todos los procesos cuyo PID se encuentre almacenado en 'PIDS'
 void matarTodos_pids()
 {
     for (int i = 0; i < MAX_2PLANO; ++i)
@@ -681,22 +694,19 @@ void handle_sigchld(int sig) {
             printf("[%d]\n", pid);
             eliminar_pid(pid);
         }
-        if(pid == -1){
-            //printf("%d\n", PIDS[i]);
-            //perror("waitpid");
-
-        }
     }
     errno = saved_errno;
 }
 
+// Funciones para bloquear y desbloquear la señal SIGCHLD
+
 void block_sigchld(){
-    // Preparamos la mascara para bloquear la señal sigchld
+    // Preparamos la máscara para bloquear la señal sigchld
     sigset_t blocked_signals_CHLD;
     sigemptyset(&blocked_signals_CHLD);
     sigaddset(&blocked_signals_CHLD, SIGCHLD);
     
-    // Bloqueamos las señales SIGCHLD
+    // Bloqueamos la señale SIGCHLD
     if(sigprocmask(SIG_BLOCK, &blocked_signals_CHLD, NULL) == -1){
         perror("sigprocmask (block SIGCHLD)");
         exit(EXIT_FAILURE);
@@ -704,12 +714,11 @@ void block_sigchld(){
 }
 
 void unblock_sigchld(){
-    // Preparamos la mascara para bloquear la señal sigchld
     sigset_t blocked_signals_CHLD;
     sigemptyset(&blocked_signals_CHLD);
     sigaddset(&blocked_signals_CHLD, SIGCHLD);
     
-    // Bloqueamos las señales SIGCHLD
+    // Desbloqueamos la señale SIGCHLD
     if(sigprocmask(SIG_UNBLOCK, &blocked_signals_CHLD, NULL) == -1){
         perror("sigprocmask (unblock SIGCHLD)");
         exit(EXIT_FAILURE);
@@ -729,7 +738,6 @@ void run_bjobs(struct execcmd* ecmd)
 
     optind = 1;
     while (!error && (opt = getopt(ecmd->argc, ecmd->argv, "kh")) != -1) {
-        // perror("getopt");
         switch (opt) {
             case 'k':
                 flag_k = 1;
@@ -743,16 +751,12 @@ void run_bjobs(struct execcmd* ecmd)
         }
     }
 
-    if (!error)
-    {
-        if (flag_k) // Se le envia la señal SIGKILL/SIGINT a todos los procesos en segundo plano
-            matarTodos_pids();
-        else
-            listar_pids();
+    if (!error){
+        (flag_k) ? matarTodos_pids() : listar_pids();
     }
 }
 
-// Devuelve el indice del comando o -1 en caso de no ser interno
+// Devuelve el indice del comando interno que tiene asignado o -1 en caso de no serlo
 int cmd_esInterno(char* cmd)
 {
     int i = 0;
@@ -1233,8 +1237,8 @@ void run_cmd(struct cmd* cmd)
     int p[2];
     int fd;
 
-    int comando;
-    pid_t pid;    //TODO si no se usa en otro sitio a parte de BACK => moverla ahi
+    int comando;    // almacenará el número de comando interno o -1
+    pid_t pid;      // 'pid' almacena el PID del proceso hijo al que se espera tras hacer un fork
 
     DPRINTF(DBG_TRACE, "STR\n");
 
@@ -1271,11 +1275,15 @@ void run_cmd(struct cmd* cmd)
             }
 
             if (rcmd->cmd->type == EXEC && (comando = cmd_esInterno((ecmd = (struct execcmd*) rcmd->cmd)->argv[0])) != -1)
+            {
 	            ejecutar_interno(ecmd, comando);
+                TRY ( close(fd) );
+                fd = dup(fd_anterior);
+            }
             else 
             {
                 block_sigchld();
-                if (fork_or_panic("fork REDR") == 0)
+                if ((pid = fork_or_panic("fork REDR")) == 0)
                 {
                     if (rcmd->cmd->type == EXEC)
                         exec_cmd(ecmd);
@@ -1284,14 +1292,14 @@ void run_cmd(struct cmd* cmd)
 
                     exit(EXIT_SUCCESS);
                 }
-                TRY( wait(NULL) );
+
+                TRY( waitpid(pid, 0, 0) );
+                TRY ( close(fd) );
+                fd = dup(fd_anterior);
                 unblock_sigchld();
             }
-
-            TRY ( close(fd) );
-            fd = dup(fd_anterior);
+ 
    			TRY ( close(fd_anterior) );
-
             break;
 
         case LIST:
@@ -1376,6 +1384,7 @@ void run_cmd(struct cmd* cmd)
                 }
                 else
                     run_cmd(bcmd->cmd);
+
                 exit(EXIT_SUCCESS);
             }
             else
@@ -1403,12 +1412,6 @@ void run_cmd(struct cmd* cmd)
     }
 
     DPRINTF(DBG_TRACE, "END\n");
-/*
-    // Desbloqueamos las señales SGCHLD
-    if(sigprocmask(SIG_UNBLOCK, &blocked_signals_CHLD, NULL) == -1){
-        perror("sigprocmask (unblock SIGCHLD)");
-        exit(EXIT_FAILURE);
-    }*/
 }
 
 
@@ -1574,8 +1577,6 @@ char* get_cmd()
         exit(EXIT_FAILURE);
     }
     char* user = passwd->pw_name;
-// TODO preguntar al profesor si podemos inicializar la variable
-// al comienzo del programa y cambiarlo solo en cd.
     char path[PATH_MAX];
     if(!getcwd(path, PATH_MAX)){
         perror("getcwd");
@@ -1588,7 +1589,7 @@ char* get_cmd()
     char caracteres_extra[] = {'@', '>', ' ', '\0'};
 
     // Usamos 'sizeof' para que tambien se contabilice el '\0'
-    char prompt[strlen(user)+strlen(dir)+sizeof(caracteres_extra)];
+    char prompt[strlen(user) + strlen(dir) + sizeof(caracteres_extra)];
 
     sprintf(prompt, "%s@%s> ", user, dir);
 
@@ -1663,6 +1664,7 @@ int main(int argc, char** argv)
 
     // Cosecha de procesos zombies con manejador de SIGCHLD
     struct sigaction sa;
+    memset(&sa, 0, sizeof(struct sigaction));
     sa.sa_handler = &handle_sigchld;
     sigemptyset(&sa.sa_mask);
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
@@ -1696,8 +1698,6 @@ int main(int argc, char** argv)
 
         // Ejecuta la línea de órdenes
         run_cmd(cmd);
-
-
 
         // Libera la memoria de las estructuras 'cmd'
         free_cmd(cmd);
