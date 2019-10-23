@@ -409,9 +409,13 @@ void run_cd(struct execcmd* ecmd)
     } 
     // cd
     else if(ecmd->argc == 1){	
-        setenv("OLDPWD",path,1);
+        if (setenv("OLDPWD",path,1)){
+            perror("chdir (setenv)");
+            exit(EXIT_FAILURE);
+        }
         if(chdir(getenv("HOME"))){
             perror("chdir");
+            exit(EXIT_FAILURE);
         }
     }
     // cd -
@@ -419,16 +423,24 @@ void run_cd(struct execcmd* ecmd)
         char * aux = getenv("OLDPWD");
         if(aux == NULL){
             fprintf(stderr, "run_cd: Variable OLDPWD no definida\n");
-        } else {
-	        setenv("OLDPWD",path,1);
+        }
+        else {
+	        if (setenv("OLDPWD",path,1)){
+                perror("chdir (setenv)");
+                exit(EXIT_FAILURE);
+            }
 	        if(chdir(aux)){
 	            perror("chdir");
+                exit(EXIT_FAILURE);
         	}
         }
     }
     // cd dir
     else {
-        setenv("OLDPWD",path,1);
+        if (setenv("OLDPWD",path,1)){
+            perror("chdir (setenv)");
+            exit(EXIT_FAILURE);
+        }
         if(chdir(ecmd->argv[1]))
             fprintf(stderr, "run_cd: No existe el directorio '%s'\n", ecmd->argv[1]);
     }
@@ -456,8 +468,9 @@ char* itoa(int val, int base){
 
 // Funcion que dado un nombre de fichero 'nombre' y un entero 'indice' los concatena en un char* 'dst'
 void nombreFichero(char * nombre, int indice, char * dst){
+    const int base = 10;
     strcpy(dst, nombre);
-    strcat(dst, itoa(indice, 10));
+    strcat(dst, itoa(indice, base));
 }
 
 void do_psplit(int l, int b, int s, int fd, char * name){
@@ -473,7 +486,11 @@ void do_psplit(int l, int b, int s, int fd, char * name){
 
     // Primer fichero que se crea
     nombreFichero(name, indice, nombre_fich);
-    int fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+    int fd_i;
+    if ((fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) == -1){
+        perror("do_psplit (open)");
+        exit(EXIT_FAILURE);
+    }
 
     int b_escribir = b;	// bytes a escribir en cada iteracion de lectura, para la opcion -b
     int i, saltos;  // variables que se usaran para la opcion -l
@@ -485,11 +502,17 @@ void do_psplit(int l, int b, int s, int fd, char * name){
             offset = 0;	
             while (bytesLeidos > 0) {
                 if (!b_escribir) {
-                    fsync(fd_i);
+                    if (fsync(fd_i)){
+                        perror("do_psplit (fsync)");
+                        exit(EXIT_FAILURE);
+                    }
                     TRY ( close(fd_i) );
                     indice++;
                     nombreFichero(name, indice, nombre_fich);
-                    fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+                    if ((fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) == -1){
+                        perror("do_psplit (open)");
+                        exit(EXIT_FAILURE);
+                    }
                     b_escribir = b;	// volvemos a establecer que hay que escribir un total de 'b' bytes
                 }
                 offset_W = 0;
@@ -512,11 +535,17 @@ void do_psplit(int l, int b, int s, int fd, char * name){
             offset = 0;
             while(i < bytesLeidos){
                 if(saltos == l){
-                    fsync(fd_i);
+                    if(fsync(fd_i)){
+                        perror("do_psplit (fsync)");
+                        exit(EXIT_FAILURE);
+                    }
                     TRY( close(fd_i) );
                     indice++;
                     nombreFichero(name, indice, nombre_fich);
-                    fd_i = open(nombre_fich, O_RDWR | O_CREAT | O_TRUNC, S_IRWXU);
+                    if ((fd_i = open(nombre_fich , O_RDWR | O_CREAT | O_TRUNC, S_IRWXU)) == -1){
+                        perror("do_psplit (open)");
+                        exit(EXIT_FAILURE);
+                    }
                     saltos = 0;
                 }
                 
@@ -538,7 +567,10 @@ void do_psplit(int l, int b, int s, int fd, char * name){
             }
         }
     }
-    fsync(fd_i);
+    if (fsync(fd_i)){
+        perror("do_psplit (fsync)");
+        exit(EXIT_FAILURE);
+    }
     TRY ( close(fd_i) );
 }
 
@@ -609,13 +641,17 @@ void run_psplit(struct execcmd* ecmd)
             int cola, cabeza;
             cola = cabeza = 0;
             int BPROCS = p;
+            int fd;
 
             block_sigchld();
 
             for(int i = optind; i < ecmd->argc; i++){
                 if(BPROCS > 0) {    // Cuando aún tenemos opción de lanzar más en paralelo
                     if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
-                        int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
+                        if ((fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU)) == -1){
+                            perror("run_psplit (open)");
+                            exit(EXIT_FAILURE);
+                        }
                         do_psplit(l, b, s, fd, ecmd->argv[i]);
                         TRY ( close(fd) );
                         exit(EXIT_SUCCESS);
@@ -624,10 +660,16 @@ void run_psplit(struct execcmd* ecmd)
                     cabeza = (cabeza + 1) % p;
                 }
                 else {  // Primero debemos esperar que finalice el más antiguo
-                    waitpid(procs_psplit[cola], 0, 0);
+                    if (waitpid(procs_psplit[cola], 0, 0) == -1){
+                        perror("run_psplit (waitpid)");
+                        exit(EXIT_FAILURE);
+                    }
                     cola = (cola + 1) % p;
                     if((procs_psplit[cabeza] = fork_or_panic("fork psplit")) == 0){
-                        int fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU);
+                        if ((fd = open(ecmd->argv[i], O_RDONLY, S_IRWXU)) == -1){
+                            perror("run_psplit (open)");
+                            exit(EXIT_FAILURE);
+                        }
                         do_psplit(l, b, s, fd, ecmd->argv[i]);
                         TRY ( close(fd) );
                         exit(EXIT_SUCCESS);
@@ -638,7 +680,10 @@ void run_psplit(struct execcmd* ecmd)
 
             // Esperamos en orden a que acaben todos los procesos en paralelo
             for(int i = 0; i < MIN(p, ecmd->argc - optind); i++){
-                waitpid(procs_psplit[cola], 0, 0);
+                if (waitpid(procs_psplit[cola], 0, 0) == -1){
+                    perror("run_psplit (waitpid)");
+                    exit(EXIT_FAILURE);
+                }
                 cola = (cola + 1) % p;
             }
         }
@@ -682,19 +727,22 @@ void matarTodos_pids()
 {
     for (int i = 0; i < MAX_2PLANO; ++i)
         if (PIDS[i] != -1)
-            kill(PIDS[i], SIGKILL);
+            if (kill(PIDS[i], SIGKILL) == -1){
+                perror("kill");
+                exit(EXIT_FAILURE);
+            }
 }
 
 // Manejador de señal SIGCHLD
 void handle_sigchld(int sig) {
     int saved_errno = errno;
     pid_t pid = 0;
-    for(int i = 0; i < MAX_2PLANO; i++){
-        if ((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){
-            printf("[%d]\n", pid);
-            eliminar_pid(pid);
-        }
+
+    while((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){
+        printf("[%d]\n", pid);
+        eliminar_pid(pid);
     }
+
     errno = saved_errno;
 }
 
@@ -703,8 +751,14 @@ void handle_sigchld(int sig) {
 void block_sigchld(){
     // Preparamos la máscara para bloquear la señal sigchld
     sigset_t blocked_signals_CHLD;
-    sigemptyset(&blocked_signals_CHLD);
-    sigaddset(&blocked_signals_CHLD, SIGCHLD);
+    if (sigemptyset(&blocked_signals_CHLD) == -1) {
+        perror("sigemptyset");
+        exit(EXIT_FAILURE);
+    }
+    if (sigaddset(&blocked_signals_CHLD, SIGCHLD)){
+        perror("sigaddset");
+        exit(EXIT_FAILURE);
+    }
     
     // Bloqueamos la señale SIGCHLD
     if(sigprocmask(SIG_BLOCK, &blocked_signals_CHLD, NULL) == -1){
@@ -715,8 +769,14 @@ void block_sigchld(){
 
 void unblock_sigchld(){
     sigset_t blocked_signals_CHLD;
-    sigemptyset(&blocked_signals_CHLD);
-    sigaddset(&blocked_signals_CHLD, SIGCHLD);
+    if (sigemptyset(&blocked_signals_CHLD) == -1) {
+        perror("sigemptyset");
+        exit(EXIT_FAILURE);
+    }
+    if (sigaddset(&blocked_signals_CHLD, SIGCHLD)){
+        perror("sigaddset");
+        exit(EXIT_FAILURE);
+    }
     
     // Desbloqueamos la señale SIGCHLD
     if(sigprocmask(SIG_UNBLOCK, &blocked_signals_CHLD, NULL) == -1){
@@ -1266,7 +1326,11 @@ void run_cmd(struct cmd* cmd)
 
             rcmd = (struct redrcmd*) cmd;
 
-            int fd_anterior = dup(rcmd->fd);	// Guardamos el anterior descriptor de fichero
+            int fd_anterior;
+            if ((fd_anterior = dup(rcmd->fd)) == -1){   // Guardamos el anterior descriptor de fichero
+                perror("dup");
+                exit(EXIT_FAILURE);
+            }	
             TRY( close(rcmd->fd) );
             if ((fd = open(rcmd->file, rcmd->flags, rcmd->mode)) < 0)
             {
@@ -1278,7 +1342,10 @@ void run_cmd(struct cmd* cmd)
             {
 	            ejecutar_interno(ecmd, comando);
                 TRY ( close(fd) );
-                fd = dup(fd_anterior);
+                if ((fd = dup(fd_anterior)) == -1){
+                    perror("dup");
+                    exit(EXIT_FAILURE);
+                }
             }
             else 
             {
@@ -1295,7 +1362,10 @@ void run_cmd(struct cmd* cmd)
 
                 TRY( waitpid(pid, 0, 0) );
                 TRY ( close(fd) );
-                fd = dup(fd_anterior);
+                if ((fd = dup(fd_anterior)) == -1){
+                    perror("dup");
+                    exit(EXIT_FAILURE);
+                }
                 unblock_sigchld();
             }
  
@@ -1643,8 +1713,14 @@ int main(int argc, char** argv)
 {
     // Bloqueamos la señal SIGINT
     sigset_t blocked_signals;
-    sigemptyset(&blocked_signals);
-    sigaddset(&blocked_signals, SIGINT);
+    if (sigemptyset(&blocked_signals)){
+        perror("sigemptyset");
+        exit(EXIT_FAILURE);
+    }
+    if (sigaddset(&blocked_signals, SIGINT)){
+        perror("sigaddset");
+        exit(EXIT_FAILURE);
+    }
 
     if(sigprocmask(SIG_BLOCK, &blocked_signals, NULL) == -1){
         perror("sigprocmask (SIGINT)");
@@ -1655,7 +1731,10 @@ int main(int argc, char** argv)
     struct sigaction ign_sigquit;
     memset(&ign_sigquit, 0, sizeof(struct sigaction));
     ign_sigquit.sa_handler = SIG_IGN;
-    sigemptyset(&ign_sigquit.sa_mask);
+    if (sigemptyset(&ign_sigquit.sa_mask)){
+        perror("sigemptyset");
+        exit(EXIT_FAILURE);
+    }
 
     if (sigaction(SIGQUIT, &ign_sigquit, NULL) == -1) {
         perror("sigaction (SIGQUIT)");
@@ -1666,7 +1745,10 @@ int main(int argc, char** argv)
     struct sigaction sa;
     memset(&sa, 0, sizeof(struct sigaction));
     sa.sa_handler = &handle_sigchld;
-    sigemptyset(&sa.sa_mask);
+    if(sigemptyset(&sa.sa_mask)){
+        perror("sigemptyset");
+        exit(EXIT_FAILURE);
+    }
     sa.sa_flags = SA_RESTART | SA_NOCLDSTOP;
     if (sigaction(SIGCHLD, &sa, 0) == -1) {
         perror("sigaction (SIGCHLD)");
@@ -1680,7 +1762,10 @@ int main(int argc, char** argv)
     DPRINTF(DBG_TRACE, "STR\n");
 
     // Borramos la variable de entorno OLDPWD.
-    unsetenv("OLDPWD");
+    if (unsetenv("OLDPWD") == -1){
+        perror("unsetenv");
+        exit(EXIT_FAILURE);
+    }
 
     // Bucle de lectura y ejecución de órdenes
     while ((buf = get_cmd()) != NULL)
