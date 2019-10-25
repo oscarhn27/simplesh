@@ -754,7 +754,7 @@ void handle_sigchld(int sig) {
     pid_t pid = 0;
     int len, offset;
 
-    while((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){    // TODO
+    while((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){
         char * proc = itoa_con_corchetes(pid);
         len = strlen(proc);
 
