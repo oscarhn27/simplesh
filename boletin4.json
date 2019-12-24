@@ -2,7 +2,7 @@
     "setup": {
         "desc": "B4r1",
         "shell": "simplesh",
-        "prompt": "josemanuelhr@.*> ",
+        "prompt": "oscar@.*> ",
         "timeout": 5,
         "cmds": [
             "touch f1"

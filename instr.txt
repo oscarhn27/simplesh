@@ -1,0 +1,7 @@
+mkdir /tmp/ascoDeInstrucciones
+cd /tmp/ascoDeInstrucciones
+(for l in $(seq 1 1000); do echo linea$l; done) > lineas
+echo 'se crea un archivo de 1000 lineas'
+psplit -l 50 -s 50 lineas
+echo se divide en archivos de 50 lineas:
+ls -l

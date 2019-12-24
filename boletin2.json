@@ -102,7 +102,7 @@
 
         {
             "cmd": "cd ; cwd",
-            "out": "^cwd: /home/alumno\\r\\n$"
+            "out": "^cwd: /home/oscar\\r\\n$"
         },
         {
             "cmd": "cd -",
