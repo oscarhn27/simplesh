@@ -733,13 +733,40 @@ void matarTodos_pids()
             }
 }
 
+// Metodo para añadir '[]' directamente a un entero en base 10
+char* itoa_con_corchetes(int val){
+    static char buf[32] = {0};
+    
+    buf[30] = '\n';
+    buf[29] = ']';
+    int i = 28;
+    for(; val && i ; --i, val /= 10)
+        buf[i] = "0123456789"[val % 10];
+    buf[i] = '[';
+    
+    return &buf[i];
+}
+
 // Manejador de señal SIGCHLD
 void handle_sigchld(int sig) {
     int saved_errno = errno;
     pid_t pid = 0;
+    int len, offset;
 
     while((pid = waitpid((pid_t)(-1), 0, WNOHANG)) > 0){
-        printf("[%d]\n", pid);
+        char * proc = itoa_con_corchetes(pid);
+        len = strlen(proc);
+
+        offset = 0;
+        while ((offset += write(STDOUT_FILENO, proc+offset, len)) != len){
+            len -= offset;
+            if(offset < 0)
+            {
+                perror("write");
+                exit(EXIT_FAILURE);
+            }
+        }
+
         eliminar_pid(pid);
     }
 

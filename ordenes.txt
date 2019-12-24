@@ -1,0 +1,83 @@
+ls
+echo 1
+ls | grep f | wc -l
+(echo 1; echo 2; echo 3) | wc -l
+(cat /etc/lsb-release | grep DESC | cut -d = -f 2 )
+echo -n l1 > f3 ; echo l2 >> f3 ; cat f3 | grep l1
+cwd
+cd dir
+sleep 5
+echo -n l1 > f3 ; echo l2 >> f3 ; echo -n l3 ; cat f3 | grep l1
+echo -n l1 > f4 ; echo l2 >> f4 ; echo -n l3 > f4 ; cat f4 | grep l3
+(echo -n l1 ; echo l2 ; echo -n l3) | grep l | wc -c
+( cd /etc ; cat lsb-release | grep DESCRIPTION | cut -d = -f 2 ) > dist ; cat dist
+cwd
+cwd | tr / : | cut -d : -f 3
+cwd > cwdfile ; cat cwdfile
+(cwd)
+cd dir >> emptyfile ; cwd ; cat ../emptyfile
+cd nodir ; cd dir dir
+cd dir ; cwd
+cd dir | cwd
+cd dir &
+(cd dir) ; cwd
+cd ; cwd
+cd -
+cd dir ; cd ; cd - ; cwd
+cd olddir; cd ../dir; cd - ; cwd
+(cd dir ; cwd ; cd ; cwd ; cd - ; cwd) | grep dir > f2 ; wc -l f2
+psplit -h | head -1
+psplit -h | head -3 | tail -1
+psplit -h | tail -2
+( echo 123456) | psplit -l 1 -b 1
+( echo 123456) | psplit -s 10000000
+( echo 1; echo 2; echo 3; echo 4; echo 5) | psplit -l 2 ; wc -l stdin0 stdin1 stdin2 ; rm -f stdin0 stdin1 stdin2
+( echo -n 12345) | psplit -b 2 ; wc -c stdin0 stdin1 stdin2 ; rm -f stdin0 stdin1 stdin2
+( echo 0; echo 1) | tee splitme | psplit -l 1 ; wc -c stdin0 stdin1 ; cat stdin0 ; cat stdin1 ; cat stdin0 stdin1 > splitmecopy ; diff splitme splitmecopy ; rm -f splitme splitmecopy
+( echo 0; echo 1) | tee splitme | psplit -b 1 -s 10 ; wc -c stdin0 stdin1 stdin2 stdin3 ; cat stdin0 stdin1 stdin2 stdin3 ; cat stdin0 stdin1 stdin2 stdin3 > splitmecopy ; diff splitme splitmecopy ; rm -f splitme splitmecopy
+( echo 0; echo 1) | tee splitme | psplit -b 1 -s 1 ; wc -c stdin0 stdin1 stdin2 stdin3 ; cat stdin0 stdin1 stdin2 stdin3 ; cat stdin0 stdin1 stdin2 stdin3 > splitmecopy ; diff splitme splitmecopy ; rm -f splitme splitmecopy
+cat lineas | psplit -l 1001 ; cat stdin0 | tail -1 ; rm -f stdin0
+cat lineas | psplit -l 1000 ; cat stdin0 | tail -1 ; rm -f stdin0
+cat lineas | psplit -l 1000 -s 1 ; cat stdin0 | tail -1 ; rm -f stdin0
+cat lineas | psplit -l 1000 -s 65536 ; cat stdin0 | tail -1 ; rm -f stdin0
+cat lineas | psplit -l 999 ; cat stdin1 ; rm -f stdin0 stdin1
+cat bytes | psplit -b 131072 -s 130000 ; wc -c stdin511 ; rm -f stdin511
+cat bytes | psplit -b 131072 -s 131072 ; wc -c stdin511 ; rm -f stdin511
+cat bytes | psplit -b 131072 -s 132000 ; wc -c stdin511 ; rm -f stdin511
+cat bytes | psplit -b 130000 -s 120000 ; wc -c stdin516 ; rm -f stdin516
+cat bytes | psplit -b 130000 -s 130000 ; wc -c stdin516 ; rm -f stdin516
+cat bytes | psplit -b 130000 -s 140000 ; wc -c stdin516 ; rm -f stdin516
+cat bytes | psplit -b 32000000 ; cat stdin0 stdin1 stdin2 > bytescopy ; diff -s bytes bytescopy
+psplit -b 32000000 bytes morebytes ; cat bytes0 morebytes1 bytes2 > bytescopy ; diff -s morebytes bytescopy
+psplit -b 32000000 -s 768 bytes morebytes ; cat bytes0 morebytes1 bytes2 > bytescopy ; diff -s morebytes bytescopy
+psplit -b 32000000 -s 1048576 bytes morebytes ; cat bytes0 morebytes1 bytes2 > bytescopy ; diff -s morebytes bytescopy
+psplit -b 65536 -s 65536 -p 0 bytes
+psplit -b 120000 -s 120000 -p 1 bytes ; wc -c bytes559 ; rm -f bytes559
+psplit -b 131072 -s 131071 -p 2 bytes ; wc -c bytes511 ; rm -f bytes511
+psplit -b 131072 -s 131072 -p 2 bytes ; wc -c bytes511 ; rm -f bytes511
+psplit -b 131072 -s 131073 -p 2 bytes ; wc -c bytes511 ; rm -f bytes511
+psplit -b 262144 -s 262143 -p 2 bytes morebytes ; wc -c bytes255 morebytes255 ; rm -f bytes255 morebytes255
+psplit -b 262144 -s 262144 -p 2 bytes morebytes ; wc -c bytes255 morebytes255 ; rm -f bytes255 morebytes255
+psplit -b 262144 -s 262145 -p 3 bytes morebytes ; wc -c bytes255 morebytes255 ; rm -f bytes255 morebytes255
+psplit -b 524288 -s 262144 -p 3 bytes morebytes evenmorebytes; wc -c bytes127 morebytes127 evenmorebytes127
+psplit -b 262144 -s 262144 -p 1 bytes morebytes ; wc -c bytes255 morebytes255 ; rm -f bytes255 morebytes255
+sleep 1 & ; ls f1
+sleep 1 & ; ls | grep f1
+echo -n jobs: ; sleep 1 & ; sleep 2 ; echo -n zombies: ; ps aux | grep [d]efun
+echo -n jobs: ; sleep 1 & ; sleep 2 ; echo -n zombies: ; ps aux | grep [d]efun | wc -l
+echo -n jobs: ; sleep 5 & ; sleep 5 & ; sleep 5 & ; sleep 1
+echo -n jobs: ; ( sleep 5 & ; sleep 5 & ; sleep 5 & ) ; sleep 1
+echo -n jobs: ; ( sleep 1 & ; sleep 1 & ; sleep 1 & ) ; sleep 2
+echo -n jobs: ; sleep 1 & ; sleep 2
+sleep 1 & ; sleep 2 ; echo -n survivors: ; bjobs
+sleep 1 & ; sleep 2 ; echo -n nsurvivors: ; bjobs | wc -l
+sleep 5 & ; sleep 5 & ; sleep 5 & ; sleep 1 ; echo -n njobs: ; bjobs | wc -l
+( sleep 5 & ; sleep 5 & ; sleep 5 & ) ; sleep 1 ; echo -n njobs: ; bjobs | wc -l
+( sleep 1 & ; sleep 1 & ; sleep 1 & ; bjobs ) ; sleep 2 ; echo -n survivors: ; bjobs
+sleep 5 & ; sleep 5 & ; bjobs | tr -d '[]' | xargs -- kill -s SIGKILL ; sleep 1 ; echo -n survivors: ; bjobs | wc -l
+sleep 5 & ; sleep 5 & ; bjobs | tr -d '[]' | xargs -- kill -s SIGKILL ; sleep 1 ; echo -n zombies: ; ps aux | grep [d]efun | wc -l
+bjobs -n > /dev/null
+bjobs -h | head -3 | tail -1
+echo -n jobs: ; sleep 5 & ; sleep 5 & ; bjobs -k ; sleep 1 ; echo -n survivors: ; bjobs
+echo -n jobs: ; sleep 5 & ; sleep 5 & ; bjobs -k ; sleep 1 ; echo -n zombies: ; ps aux | grep [d]efun | wc -l
+echo -n jobs: ; ( sleep 1 & ; ) ; ps aux | grep [d]efunc ; bjobs 
